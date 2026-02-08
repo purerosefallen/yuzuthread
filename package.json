@@ -1,6 +1,6 @@
 {
-  "name": "myproject",
-  "description": "myproject-desc",
+  "name": "yuzuthread",
+  "description": "Decorator-driven class workers for Node.js worker_threads with typed-struct shared memory.",
   "version": "1.0.0",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -26,15 +26,22 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://code.moenext.com/nanahira/myproject.git"
+    "url": "https://github.com/purerosefallen/yuzuthread.git"
   },
   "author": "Nanahira <nanahira@momobako.com>",
   "license": "MIT",
-  "keywords": [],
+  "keywords": [
+    "worker_threads",
+    "worker",
+    "decorator",
+    "typescript",
+    "rpc",
+    "typed-struct"
+  ],
   "bugs": {
-    "url": "https://code.moenext.com/nanahira/myproject/issues"
+    "url": "https://github.com/purerosefallen/yuzuthread/issues"
   },
-  "homepage": "https://code.moenext.com/nanahira/myproject",
+  "homepage": "https://github.com/purerosefallen/yuzuthread#readme",
   "jest": {
     "moduleFileExtensions": [
       "js",
