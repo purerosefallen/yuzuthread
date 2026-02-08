@@ -1,5 +1,6 @@
 import { AnyClass } from 'nfkit';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
 import { getWorkerMethods } from './worker-method';
 import { mutateTypedStructProto } from './utility/mutate-typed-struct-proto';
 
@@ -64,9 +65,13 @@ export type WorkerRegistration = {
   filePath: string;
 };
 
-const THIS_FILE = __filename;
 const REGISTRY = new WeakMap<AnyClass, WorkerRegistration>();
 const STARTED = new Set<string>();
+
+type WorkerOptions = {
+  filePath?: string;
+  id?: string;
+};
 
 const serializeError = (error: unknown): SerializedError => {
   if (error instanceof Error) {
@@ -79,27 +84,25 @@ const serializeError = (error: unknown): SerializedError => {
   return { message: String(error) };
 };
 
-const toPath = (stackLine: string): string | null => {
-  const line = stackLine.trim();
-  const withParen = line.match(/\((.*):\d+:\d+\)$/);
-  if (withParen && withParen[1]) return withParen[1];
-  const direct = line.match(/at (.*):\d+:\d+$/);
-  if (direct && direct[1]) return direct[1];
-  return null;
+const callsites = (): NodeJS.CallSite[] => {
+  const errorCtr = Error as ErrorConstructor & {
+    prepareStackTrace?: (error: Error, stack: NodeJS.CallSite[]) => unknown;
+  };
+  const oldPrepareStackTrace = errorCtr.prepareStackTrace;
+  errorCtr.prepareStackTrace = (_, stack) => stack;
+  const stack = (new Error().stack as unknown as NodeJS.CallSite[]).slice(1);
+  errorCtr.prepareStackTrace = oldPrepareStackTrace;
+  return stack;
 };
 
-const getDecoratorCallerFile = (): string | null => {
-  const stack = new Error().stack;
-  if (!stack) return null;
-  const lines = stack.split('\n').slice(1);
-  for (const line of lines) {
-    const path = toPath(line);
-    if (!path) continue;
-    if (path === THIS_FILE) continue;
-    if (path.includes('node_modules')) continue;
-    return path;
+const getCurrentFile = (index = 2): string | null => {
+  const fileName = callsites()[index]?.getFileName();
+  if (!fileName) return null;
+  try {
+    return fileURLToPath(fileName);
+  } catch {
+    return fileName;
   }
-  return null;
 };
 
 const invokeWorkerMethod = async (
@@ -191,7 +194,9 @@ const tryStartWorkerForClass = (target: AnyClass, registration: WorkerRegistrati
   });
 };
 
-export const Worker = (filePath?: string): ClassDecorator => {
+export const Worker = (options: WorkerOptions = {}): ClassDecorator => {
+  const resolvedFilePath = options.filePath ?? getCurrentFile();
+
   return (target) => {
     const cls = target as unknown as AnyClass;
     const existing = REGISTRY.get(cls);
@@ -199,12 +204,11 @@ export const Worker = (filePath?: string): ClassDecorator => {
       tryStartWorkerForClass(cls, existing);
       return;
     }
-    const resolvedFilePath = filePath ?? getDecoratorCallerFile();
     if (!resolvedFilePath) {
       throw new Error('@Worker() failed: cannot resolve class file path');
     }
     const registration: WorkerRegistration = {
-      id: `${resolvedFilePath}#${cls.name || 'AnonymousClass'}`,
+      id: options.id ?? `${resolvedFilePath}#${cls.name || 'AnonymousClass'}`,
       filePath: resolvedFilePath,
     };
     REGISTRY.set(cls, registration);

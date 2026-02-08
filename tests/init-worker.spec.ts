@@ -1,4 +1,4 @@
-import { initWorker } from '../src/init-worker';
+import { initWorker } from '..';
 import { CounterWorker } from './fixtures/counter.worker.js';
 import { SharedStructWorker } from './fixtures/shared-struct.worker.js';
 

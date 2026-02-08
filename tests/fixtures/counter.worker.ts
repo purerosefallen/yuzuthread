@@ -1,8 +1,7 @@
 import { isMainThread } from 'node:worker_threads';
-import { WorkerMethod } from '../../src/worker-method';
-import { Worker } from '../../src/worker';
+import { WorkerMethod, Worker } from '../..';
 
-@Worker(__filename)
+@Worker()
 export class CounterWorker {
   count = 0;
 
