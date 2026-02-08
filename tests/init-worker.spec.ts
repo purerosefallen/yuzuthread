@@ -3,6 +3,15 @@ import { CounterWorker } from './fixtures/counter.worker.js';
 import { SharedStructWorker } from './fixtures/shared-struct.worker.js';
 
 describe('initWorker', () => {
+  it('should work as a normal class when instantiated directly', async () => {
+    const counter = new CounterWorker();
+
+    expect(await counter.increment(2)).toEqual({ count: 2, isMainThread: true });
+    expect(counter.add(1, 2)).toBe(3);
+    expect(counter.onMainAdd(3, 4)).toEqual({ count: 9, isMainThread: true });
+    expect(await counter.callMainAdd(1, 1)).toEqual({ count: 11, isMainThread: true });
+  });
+
   it('should execute @WorkerMethod in worker thread', async () => {
     const counter = await initWorker(CounterWorker);
     const result = await counter.increment(2);
