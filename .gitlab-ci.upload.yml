@@ -1,0 +1,42 @@
+stages:
+  - install
+  - build
+  - deploy
+
+variables:
+  GIT_DEPTH: "1"
+
+npm_ci:
+  stage: install
+  tags:
+    - linux
+  script:
+    - npm ci
+  artifacts:
+    paths:
+      - node_modules
+
+.build_base:
+  stage: build
+  tags:
+    - linux
+  dependencies:
+    - npm_ci
+
+build:
+  extends: .build_base
+  script: npm run build
+  artifacts:
+    paths:
+      - dist/
+
+upload_to_minio:
+  stage: deploy
+  dependencies:
+    - build
+  tags:
+    - linux
+  script:
+    - aws s3 --endpoint=https://minio.momobako.com:9000 sync --delete dist/ s3://nanahira/path
+  only:
+    - master
