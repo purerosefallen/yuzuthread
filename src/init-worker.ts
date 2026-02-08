@@ -1,16 +1,15 @@
 import { AnyClass } from 'nfkit';
 import { Worker } from 'node:worker_threads';
-import { getWorkerMethods } from './worker-method';
+import { getWorkerCallbacks, getWorkerMethods } from './worker-method';
 import {
   getWorkerRegistration,
+  WorkerCallbackInvokeMessage,
+  WorkerCallbackResultMessage,
   WorkerDataPayload,
   WorkerHostMessage,
   WorkerInvokeMessage,
   WorkerResultMessage,
 } from './worker';
-import { findTypedStructClass } from './utility/find-typed-struct-cls';
-import { mutateTypedStructProto } from './utility/mutate-typed-struct-proto';
-import { AnyStructConstructor } from './utility/types';
 
 type ErrorLike = {
   message: string;
@@ -29,49 +28,15 @@ const toError = (error: ErrorLike | unknown, fallback: string): Error => {
   return new Error(fallback);
 };
 
-const getTypedStructByteLength = (
-  structCls: AnyStructConstructor,
-  ctorArgs: unknown[],
-): { byteLength: number; initial: Uint8Array | null } => {
-  const baseSize = structCls.baseSize;
-  const firstArg = ctorArgs[0];
-
-  if (Buffer.isBuffer(firstArg)) {
-    if (firstArg.length < baseSize) throw new TypeError('Invalid typed-struct buffer size');
-    return { byteLength: firstArg.length, initial: firstArg };
-  }
-  if (Array.isArray(firstArg)) {
-    if (firstArg.length < baseSize) throw new TypeError('Invalid typed-struct array size');
-    return { byteLength: firstArg.length, initial: Uint8Array.from(firstArg) };
-  }
-  if (ArrayBuffer.isView(firstArg)) {
-    const view = firstArg as ArrayBufferView;
-    if (view.byteLength < baseSize) throw new TypeError('Invalid typed-struct view size');
+const serializeError = (error: unknown): ErrorLike => {
+  if (error instanceof Error) {
     return {
-      byteLength: view.byteLength,
-      initial: new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
     };
   }
-  if (firstArg instanceof ArrayBuffer || firstArg instanceof SharedArrayBuffer) {
-    if (firstArg.byteLength < baseSize) throw new TypeError('Invalid typed-struct buffer size');
-    return { byteLength: firstArg.byteLength, initial: new Uint8Array(firstArg) };
-  }
-  if (typeof firstArg === 'number') {
-    if (firstArg < baseSize) throw new TypeError('Invalid typed-struct buffer size');
-    return { byteLength: firstArg, initial: null };
-  }
-  return { byteLength: baseSize, initial: null };
-};
-
-const createOneShotArgsFactory = (
-  nextArgs: unknown[],
-): (() => unknown[] | undefined) => {
-  let used = false;
-  return () => {
-    if (used) return undefined;
-    used = true;
-    return nextArgs;
-  };
+  return { message: String(error) };
 };
 
 const WORKER_BOOTSTRAP = `
@@ -97,30 +62,26 @@ export const initWorker = async <C extends AnyClass>(
 ): Promise<InstanceType<C> & { finalize: () => Promise<void> }> => {
   const registration = getWorkerRegistration(cls);
   if (!registration) {
-    throw new Error(`@Worker() is required for ${cls.name || 'AnonymousClass'}`);
+    throw new Error(`@DefineWorker() is required for ${cls.name || 'AnonymousClass'}`);
   }
 
   const workerMethods = getWorkerMethods(cls.prototype);
+  const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
   const localArgs = [...args] as unknown[];
   let typedStructPayload: WorkerDataPayload['typedStruct'] = null;
-  const structCls = findTypedStructClass(cls);
+  const typedStruct = registration.typedStruct;
 
-  if (structCls) {
-    const { byteLength, initial } = getTypedStructByteLength(
-      structCls as unknown as AnyStructConstructor,
-      localArgs,
-    );
+  if (typedStruct) {
+    const { byteLength, initial } = typedStruct.resolveBufferInfo(localArgs);
     const sharedMemory = new SharedArrayBuffer(byteLength);
     const sharedBuffer = Buffer.from(sharedMemory);
     if (initial) Buffer.from(initial).copy(sharedBuffer);
-    const oneShot = createOneShotArgsFactory([sharedBuffer, false]);
-    const mutated = mutateTypedStructProto(cls, oneShot);
-    if (!mutated) {
-      localArgs.splice(0, localArgs.length, sharedBuffer, false);
-      typedStructPayload = { mode: 'ctor', sharedBuffer: sharedMemory };
+    if (typedStruct.mode === 'mutate') {
+      typedStruct.setOneShotArgs([sharedBuffer, false]);
     } else {
-      typedStructPayload = { mode: 'mutate', sharedBuffer: sharedMemory };
+      localArgs.splice(0, localArgs.length, sharedBuffer, false);
     }
+    typedStructPayload = { sharedBuffer: sharedMemory };
   }
 
   const instance = new cls(...(localArgs as ConstructorParameters<C>));
@@ -183,6 +144,55 @@ export const initWorker = async <C extends AnyClass>(
           const failed = message as Extract<WorkerResultMessage, { ok: false }>;
           callback.reject(toError(failed.error, 'Worker method execution failed'));
         }
+        return;
+      }
+      case 'callback-invoke': {
+        const callbackInvoke = message as WorkerCallbackInvokeMessage;
+        if (!workerCallbacks.has(callbackInvoke.method)) {
+          worker.postMessage({
+            type: 'callback-result',
+            id: callbackInvoke.id,
+            ok: false,
+            error: { message: `Method is not decorated with @WorkerCallback(): ${callbackInvoke.method}` },
+          } satisfies WorkerInvokeMessage);
+          return;
+        }
+
+        const method = (instance as Record<string, unknown>)[callbackInvoke.method];
+        if (typeof method !== 'function') {
+          worker.postMessage({
+            type: 'callback-result',
+            id: callbackInvoke.id,
+            ok: false,
+            error: { message: `Worker callback not found: ${callbackInvoke.method}` },
+          } satisfies WorkerInvokeMessage);
+          return;
+        }
+
+        Promise.resolve()
+          .then(() =>
+            method.apply(
+              instance,
+              Array.isArray(callbackInvoke.args) ? callbackInvoke.args : [],
+            ),
+          )
+          .then((result: unknown) => {
+            worker.postMessage({
+              type: 'callback-result',
+              id: callbackInvoke.id,
+              ok: true,
+              result,
+            } satisfies WorkerInvokeMessage);
+          })
+          .catch((error: unknown) => {
+            const callbackError: Extract<WorkerCallbackResultMessage, { ok: false }> = {
+              type: 'callback-result',
+              id: callbackInvoke.id,
+              ok: false,
+              error: serializeError(error),
+            };
+            worker.postMessage(callbackError satisfies WorkerInvokeMessage);
+          });
         return;
       }
       case 'finalized':

@@ -1,9 +1,9 @@
 import { Struct } from 'typed-struct';
-import { WorkerMethod, Worker } from '../..';
+import { WorkerMethod, DefineWorker } from '../..';
 
 const Base = new Struct('SharedStructBase').UInt8('value').compile();
 
-@Worker()
+@DefineWorker()
 export class SharedStructWorker extends Base {
   @WorkerMethod()
   setValue(value: number) {

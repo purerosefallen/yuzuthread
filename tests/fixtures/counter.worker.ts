@@ -1,7 +1,7 @@
 import { isMainThread } from 'node:worker_threads';
-import { WorkerMethod, Worker } from '../..';
+import { WorkerCallback, WorkerMethod, DefineWorker } from '../..';
 
-@Worker()
+@DefineWorker()
 export class CounterWorker {
   count = 0;
 
@@ -17,5 +17,19 @@ export class CounterWorker {
   @WorkerMethod()
   add(a: number, b: number) {
     return a + b;
+  }
+
+  @WorkerCallback()
+  onMainAdd(a: number, b: number) {
+    this.count += a + b;
+    return {
+      count: this.count,
+      isMainThread,
+    };
+  }
+
+  @WorkerMethod()
+  async callMainAdd(a: number, b: number) {
+    return this.onMainAdd(a, b);
   }
 }
