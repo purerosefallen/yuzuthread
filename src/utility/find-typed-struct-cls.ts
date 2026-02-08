@@ -1,6 +1,6 @@
 import { ClassType } from 'nfkit';
 import { StructConstructor } from 'typed-struct';
-import { AnyStructConstructor } from './types';
+import { AnyStructConstructor } from '../types';
 
 
 

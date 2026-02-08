@@ -1,5 +1,5 @@
 import { Struct } from 'typed-struct';
-import { findTypedStructClass } from '../src/find-typed-struct-cls';
+import { findTypedStructClass } from '../src/utility/find-typed-struct-cls';
 
 describe('findTypedStructClass', () => {
   const BaseStruct = new Struct('BaseStruct').UInt8('id').compile();

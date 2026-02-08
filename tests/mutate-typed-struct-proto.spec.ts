@@ -1,6 +1,6 @@
 import { Struct } from 'typed-struct';
-import { findTypedStructClass } from '../src/find-typed-struct-cls';
-import { mutateTypedStructProto } from '../src/mutate-typed-struct-proto';
+import { findTypedStructClass } from '../src/utility/find-typed-struct-cls';
+import { mutateTypedStructProto } from '../src/utility/mutate-typed-struct-proto';
 
 describe('mutateTypedStructProto', () => {
   const BaseStruct = new Struct('BaseStruct').UInt8('id').compile();

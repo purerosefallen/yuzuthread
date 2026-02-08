@@ -1,4 +1,4 @@
-import { Metadata, reflector } from './metadata';
+import { Metadata, reflector } from './utility/metadata';
 
 export const WorkerMethod = (): MethodDecorator =>
   Metadata.set('workerMethod', true);
