@@ -5,7 +5,7 @@ import { findTypedStructClass } from './find-typed-struct-cls';
 const BRIDGE_STATE = Symbol('yuzuthread.typedStructBridgeState');
 
 type BridgeState = {
-  cb: () => ConstructorParameters<AnyStructConstructor> | undefined;
+  cb: () => unknown[] | undefined;
 };
 
 type BridgeConstructor = AnyStructConstructor & {
@@ -19,7 +19,7 @@ const getBridgeState = (target: unknown): BridgeState | null => {
 
 export const mutateTypedStructProto = <T = any>(
   cls: ClassType<T>,
-  cb: () => ConstructorParameters<AnyStructConstructor> | undefined,
+  cb: () => unknown[] | undefined,
 ): boolean => {
   const existingClassBridgeState = getBridgeState(cls);
   if (existingClassBridgeState) {

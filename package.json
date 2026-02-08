@@ -15,11 +15,13 @@
   "scripts": {
     "lint": "eslint --fix .",
     "build": "node build.js",
+    "build:test": "npm run build && tsc -p tsconfig.test.json",
     "build:cjs": "node build.js cjs",
     "build:esm": "node build.js esm",
     "build:types": "node build.js types",
     "clean": "node build.js clean",
-    "test": "jest --passWithNoTests",
+    "test": "npm run build:test && jest --passWithNoTests",
+    "test:init-worker": "npm run build:test && jest --runInBand tests/init-worker.spec.ts",
     "start": "node dist/index.cjs"
   },
   "repository": {
@@ -42,7 +44,7 @@
     "rootDir": "tests",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.ts$": "ts-jest"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

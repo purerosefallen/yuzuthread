@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "es2021",
+    "module": "commonjs",
+    "outDir": ".",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false,
+    "removeComments": false,
+    "noEmit": false
+  },
+  "include": [
+    "tests/fixtures/**/*.ts"
+  ],
+  "exclude": []
+}

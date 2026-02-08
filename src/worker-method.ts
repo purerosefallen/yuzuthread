@@ -1,7 +1,7 @@
 import { Metadata, reflector } from './utility/metadata';
 
 export const WorkerMethod = (): MethodDecorator =>
-  Metadata.set('workerMethod', true);
+  Metadata.set('workerMethod', true, 'workerMethodKeys');
 
 export const getWorkerMethods = (target: any): string[] =>
   reflector
