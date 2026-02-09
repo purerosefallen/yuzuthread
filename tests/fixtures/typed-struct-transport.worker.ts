@@ -1,5 +1,10 @@
 import { Struct } from 'typed-struct';
-import { WorkerMethod, DefineWorker, TransportType, TransportEncoder } from '../..';
+import {
+  WorkerMethod,
+  DefineWorker,
+  TransportType,
+  TransportEncoder,
+} from '../..';
 
 const Base = new Struct('TypedStructTransportBase')
   .UInt8('value')
@@ -17,10 +22,10 @@ class MyData extends Base {
 class ComplexData extends Base {
   declare value: number;
   declare count: number;
-  
+
   @TransportType(() => MyData)
   nested?: MyData;
-  
+
   plainField: string = '';
 }
 
@@ -28,7 +33,7 @@ class ComplexData extends Base {
 class EncodedData extends Base {
   declare value: number;
   declare count: number;
-  
+
   @TransportEncoder(
     (date: Date) => date.toISOString(),
     (str: string) => new Date(str),
@@ -40,9 +45,9 @@ class EncodedData extends Base {
 class WrapperClass {
   @TransportType(() => MyData)
   data!: MyData;
-  
+
   label: string = '';
-  
+
   constructor(data?: MyData, label?: string) {
     if (data) this.data = data;
     if (label) this.label = label;
@@ -53,9 +58,7 @@ class WrapperClass {
 export class TypedStructTransportWorker {
   @WorkerMethod()
   @TransportType(() => MyData)
-  createData(
-    @TransportType(() => MyData) input?: MyData,
-  ): MyData {
+  createData(@TransportType(() => MyData) input?: MyData): MyData {
     const data = new MyData();
     if (input) {
       data.value = input.value;
@@ -123,7 +126,7 @@ export class TypedStructTransportWorker {
     result.value = data.value * 2;
     result.count = data.count + 5;
     result.plainField = data.plainField + ' processed';
-    
+
     if (data.nested) {
       const nested = new MyData();
       nested.value = data.nested.value + 1;
@@ -131,7 +134,7 @@ export class TypedStructTransportWorker {
       nested.extraField = data.nested.extraField + '!';
       result.nested = nested;
     }
-    
+
     return result;
   }
 

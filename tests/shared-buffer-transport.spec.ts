@@ -24,14 +24,16 @@ describe('Shared Buffer Transport', () => {
   class DataContainer {
     sharedData!: SharedData;
     label: string = '';
-    
+
     constructor(sharedData?: SharedData, label?: string) {
       if (sharedData) this.sharedData = sharedData;
       if (label) this.label = label;
     }
   }
 
-  let worker: Awaited<ReturnType<typeof initWorker<typeof SharedBufferTestWorker>>>;
+  let worker: Awaited<
+    ReturnType<typeof initWorker<typeof SharedBufferTestWorker>>
+  >;
 
   beforeAll(async () => {
     worker = await initWorker(SharedBufferTestWorker);
@@ -45,7 +47,7 @@ describe('Shared Buffer Transport', () => {
     // 创建 SharedArrayBuffer
     const sharedMemory = new SharedArrayBuffer(Base.baseSize);
     const sharedBuffer = Buffer.from(sharedMemory);
-    
+
     // 创建实例
     const instance = new SharedData(sharedBuffer);
     instance.counter = 5;
@@ -70,7 +72,7 @@ describe('Shared Buffer Transport', () => {
     // 创建 SharedArrayBuffer
     const sharedMemory = new SharedArrayBuffer(Base.baseSize);
     const sharedBuffer = Buffer.from(sharedMemory);
-    
+
     const instance = new SharedData(sharedBuffer);
     instance.counter = 10;
     instance.timestamp = 3000;
@@ -87,7 +89,7 @@ describe('Shared Buffer Transport', () => {
     // 创建 SharedArrayBuffer
     const sharedMemory = new SharedArrayBuffer(Base.baseSize);
     const sharedBuffer = Buffer.from(sharedMemory);
-    
+
     const instance = new SharedData(sharedBuffer);
     instance.counter = 0;
 
@@ -109,7 +111,7 @@ describe('Shared Buffer Transport', () => {
     // 创建 SharedArrayBuffer
     const sharedMemory = new SharedArrayBuffer(Base.baseSize);
     const sharedBuffer = Buffer.from(sharedMemory);
-    
+
     const instance = new SharedData(sharedBuffer);
     instance.counter = 50;
     instance.timestamp = 5000;
@@ -160,7 +162,7 @@ describe('Shared Buffer Transport', () => {
     // Create SharedArrayBuffer
     const sharedMemory = new SharedArrayBuffer(Base.baseSize);
     const sharedBuffer = Buffer.from(sharedMemory);
-    
+
     const instance = new SharedData(sharedBuffer, false);
     instance.counter = 100;
 
@@ -175,7 +177,7 @@ describe('Shared Buffer Transport', () => {
     // 创建 SharedArrayBuffer
     const sharedMemory = new SharedArrayBuffer(Base.baseSize);
     const sharedBuffer = Buffer.from(sharedMemory);
-    
+
     const instance = new SharedData(sharedBuffer);
     instance.counter = 0;
 
@@ -232,7 +234,7 @@ describe('Shared Buffer Transport', () => {
       // then receives it back as parameter, the sharing behavior depends on
       // the round-trip encoding/decoding. Regular fields (metadata) are definitely
       // copied, but struct fields may or may not be shared depending on implementation.
-      
+
       // For now, we just verify the method completes without error
       // Full bidirectional sharing requires the main thread to create the SharedArrayBuffer
       expect(result.metadata).toBe(initialMetadata); // Regular field not shared
@@ -243,7 +245,7 @@ describe('Shared Buffer Transport', () => {
 
       // Manually modify main struct in main thread
       result.counter = 100;
-      
+
       // Manually modify nested struct in main thread
       result.nested!.counter = 200;
 

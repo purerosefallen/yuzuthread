@@ -8,7 +8,6 @@ import {
 } from './transport-metadata';
 import { findTypedStructClass } from './find-typed-struct-cls';
 import { AnyStructConstructor } from './types';
-import { mutateTypedStructProto } from './mutate-typed-struct-proto';
 
 type TransportContext = {
   path: string[];
@@ -72,7 +71,9 @@ const getTypedStructFields = (structCls: AnyStructConstructor): Set<string> => {
 /**
  * Check if a class is or extends a typed-struct class
  */
-const getTypedStructInfo = (cls: AnyClass): { structCls: AnyStructConstructor; fields: Set<string> } | null => {
+const getTypedStructInfo = (
+  cls: AnyClass,
+): { structCls: AnyStructConstructor; fields: Set<string> } | null => {
   const structCls = findTypedStructClass(cls);
   if (!structCls) return null;
   const fields = getTypedStructFields(structCls);
@@ -118,9 +119,14 @@ export const encodeValue = async (
     if (isArray && targetClass) {
       return await Promise.all(
         value.map((item, idx) =>
-          encodeValue(item, { type: 'class', factory: () => targetClass! }, targetClass, {
-            path: [...context.path, `[${idx}]`],
-          }),
+          encodeValue(
+            item,
+            { type: 'class', factory: () => targetClass! },
+            targetClass,
+            {
+              path: [...context.path, `[${idx}]`],
+            },
+          ),
         ),
       );
     }
@@ -134,9 +140,10 @@ export const encodeValue = async (
   // Handle Buffer -> encode with SharedArrayBuffer support
   if (Buffer.isBuffer(value)) {
     // Check if the buffer is backed by SharedArrayBuffer
-    const isSharedBuffer = value.buffer instanceof SharedArrayBuffer ||
-                           value.buffer?.constructor?.name === 'SharedArrayBuffer';
-    
+    const isSharedBuffer =
+      value.buffer instanceof SharedArrayBuffer ||
+      value.buffer?.constructor?.name === 'SharedArrayBuffer';
+
     if (isSharedBuffer) {
       return {
         __type: 'Buffer',
@@ -155,8 +162,10 @@ export const encodeValue = async (
   }
 
   // Handle SharedArrayBuffer -> pass directly
-  if (value instanceof SharedArrayBuffer || 
-      value?.constructor?.name === 'SharedArrayBuffer') {
+  if (
+    value instanceof SharedArrayBuffer ||
+    value?.constructor?.name === 'SharedArrayBuffer'
+  ) {
     return {
       __type: 'SharedArrayBuffer',
       data: value,
@@ -172,7 +181,7 @@ export const encodeValue = async (
   if (typeof value === 'object') {
     // Check if it's a typed-struct class
     const structInfo = getTypedStructInfo(targetClass);
-    
+
     if (structInfo) {
       // Handle typed-struct class
       const encoded: any = {
@@ -185,7 +194,7 @@ export const encodeValue = async (
 
       // Dump the struct buffer using the static raw method
       const buffer = structInfo.structCls.raw(value) as Buffer;
-      
+
       // Check if the buffer is backed by SharedArrayBuffer
       if (buffer && buffer.buffer instanceof SharedArrayBuffer) {
         // For SharedArrayBuffer, pass the SharedArrayBuffer directly
@@ -206,10 +215,10 @@ export const encodeValue = async (
       const proto = targetClass.prototype;
       for (const key of Object.keys(value)) {
         if (structInfo.fields.has(key)) continue; // Skip struct fields
-        
+
         const propTransporter = getPropertyTransporter(proto, key);
         const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
-        
+
         encoded.data[key] = await encodeValue(
           value[key],
           propTransporter,
@@ -232,7 +241,7 @@ export const encodeValue = async (
     for (const key of Object.keys(value)) {
       const propTransporter = getPropertyTransporter(proto, key);
       const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
-      
+
       encoded.data[key] = await encodeValue(
         value[key],
         propTransporter,
@@ -286,9 +295,14 @@ export const decodeValue = async (
     if (isArray && targetClass) {
       return await Promise.all(
         encoded.map((item, idx) =>
-          decodeValue(item, { type: 'class', factory: () => targetClass! }, targetClass, {
-            path: [...context.path, `[${idx}]`],
-          }),
+          decodeValue(
+            item,
+            { type: 'class', factory: () => targetClass! },
+            targetClass,
+            {
+              path: [...context.path, `[${idx}]`],
+            },
+          ),
         ),
       );
     }
@@ -303,16 +317,17 @@ export const decodeValue = async (
   if (typeof encoded === 'object' && encoded.__type) {
     if (encoded.__type === 'Buffer') {
       // Check if it's backed by SharedArrayBuffer
-      const isSharedBuffer = encoded.isShared && 
-        (encoded.data instanceof SharedArrayBuffer || 
-         encoded.data?.constructor?.name === 'SharedArrayBuffer');
-      
+      const isSharedBuffer =
+        encoded.isShared &&
+        (encoded.data instanceof SharedArrayBuffer ||
+          encoded.data?.constructor?.name === 'SharedArrayBuffer');
+
       if (isSharedBuffer) {
         // Create Buffer view from SharedArrayBuffer without copying
         return Buffer.from(
           encoded.data,
           encoded.byteOffset || 0,
-          encoded.byteLength || encoded.data.byteLength
+          encoded.byteLength || encoded.data.byteLength,
         );
       } else {
         // Regular Buffer
@@ -328,26 +343,30 @@ export const decodeValue = async (
     if (encoded.__type === 'TypedStructClass' && targetClass) {
       const structInfo = getTypedStructInfo(targetClass);
       if (!structInfo) {
-        throw new Error(`${context.path.join('.')}: Class is marked as TypedStructClass but is not a typed-struct class`);
+        throw new Error(
+          `${context.path.join('.')}: Class is marked as TypedStructClass but is not a typed-struct class`,
+        );
       }
 
       // Prepare buffer and clone flag
       let buffer: Buffer | undefined;
       let clone = true; // Default: clone for regular buffers
-      
+
       if (encoded.structBuffer) {
         // Check for SharedArrayBuffer using multiple methods (instanceof can fail across realms)
-        const isSharedBuffer = encoded.isShared && 
-          (encoded.structBuffer instanceof SharedArrayBuffer || 
-           encoded.structBuffer?.constructor?.name === 'SharedArrayBuffer' ||
-           Object.prototype.toString.call(encoded.structBuffer) === '[object SharedArrayBuffer]');
-        
+        const isSharedBuffer =
+          encoded.isShared &&
+          (encoded.structBuffer instanceof SharedArrayBuffer ||
+            encoded.structBuffer?.constructor?.name === 'SharedArrayBuffer' ||
+            Object.prototype.toString.call(encoded.structBuffer) ===
+              '[object SharedArrayBuffer]');
+
         if (isSharedBuffer) {
           // For SharedArrayBuffer, create Buffer view directly
           buffer = Buffer.from(
             encoded.structBuffer,
             encoded.byteOffset || 0,
-            encoded.byteLength || encoded.structBuffer.byteLength
+            encoded.byteLength || encoded.structBuffer.byteLength,
           );
           clone = false; // Don't clone SharedArrayBuffer
         } else {
@@ -356,18 +375,10 @@ export const decodeValue = async (
           clone = true; // Clone regular buffers
         }
       }
-      
-      // Use mutateTypedStructProto to handle potential constructor modifications
-      // The callback should only execute once, then return undefined
-      let executed = false;
-      mutateTypedStructProto(targetClass, () => {
-        if (executed) return undefined;
-        executed = true;
-        return [buffer, clone];
-      });
 
-      // Create instance - mutateTypedStructProto will intercept and use our buffer/clone
-      const instance = new (targetClass as any)();
+      // Use createTypedStructInstance to handle typed-struct instantiation
+      const { createTypedStructInstance } = require('./typed-struct-registry');
+      const instance = createTypedStructInstance(targetClass, buffer, clone);
 
       // Decode and set non-struct fields
       const proto = targetClass.prototype;
@@ -418,13 +429,16 @@ export const encodeMethodArgs = async (
   args: unknown[],
 ): Promise<unknown[]> => {
   const paramTransporters = getParamTransporters(target, methodName);
-  const designParamTypes: any[] = Reflect.getMetadata?.('design:paramtypes', target, methodName) || [];
+  const designParamTypes: any[] =
+    Reflect.getMetadata?.('design:paramtypes', target, methodName) || [];
 
   return await Promise.all(
     args.map((arg, index) => {
       const transporter = paramTransporters.get(index) || null;
       const designType = designParamTypes[index];
-      return encodeValue(arg, transporter, designType, { path: [`arg[${index}]`] });
+      return encodeValue(arg, transporter, designType, {
+        path: [`arg[${index}]`],
+      });
     }),
   );
 };
@@ -438,13 +452,16 @@ export const decodeMethodArgs = async (
   encoded: unknown[],
 ): Promise<unknown[]> => {
   const paramTransporters = getParamTransporters(target, methodName);
-  const designParamTypes: any[] = Reflect.getMetadata?.('design:paramtypes', target, methodName) || [];
+  const designParamTypes: any[] =
+    Reflect.getMetadata?.('design:paramtypes', target, methodName) || [];
 
   return await Promise.all(
     encoded.map((arg, index) => {
       const transporter = paramTransporters.get(index) || null;
       const designType = designParamTypes[index];
-      return decodeValue(arg, transporter, designType, { path: [`arg[${index}]`] });
+      return decodeValue(arg, transporter, designType, {
+        path: [`arg[${index}]`],
+      });
     }),
   );
 };
@@ -458,9 +475,15 @@ export const encodeMethodReturn = async (
   value: unknown,
 ): Promise<unknown> => {
   const transporter = getReturnTransporter(target, methodName);
-  const designReturnType = Reflect.getMetadata?.('design:returntype', target, methodName);
+  const designReturnType = Reflect.getMetadata?.(
+    'design:returntype',
+    target,
+    methodName,
+  );
 
-  return await encodeValue(value, transporter, designReturnType, { path: ['return'] });
+  return await encodeValue(value, transporter, designReturnType, {
+    path: ['return'],
+  });
 };
 
 /**
@@ -472,7 +495,13 @@ export const decodeMethodReturn = async (
   encoded: unknown,
 ): Promise<unknown> => {
   const transporter = getReturnTransporter(target, methodName);
-  const designReturnType = Reflect.getMetadata?.('design:returntype', target, methodName);
+  const designReturnType = Reflect.getMetadata?.(
+    'design:returntype',
+    target,
+    methodName,
+  );
 
-  return await decodeValue(encoded, transporter, designReturnType, { path: ['return'] });
+  return await decodeValue(encoded, transporter, designReturnType, {
+    path: ['return'],
+  });
 };

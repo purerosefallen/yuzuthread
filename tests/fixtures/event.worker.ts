@@ -1,4 +1,10 @@
-import { DefineWorker, WorkerMethod, OnWorkerEvent, OnWorkerExit, OnWorkerError } from '../..';
+import {
+  DefineWorker,
+  WorkerMethod,
+  OnWorkerEvent,
+  OnWorkerExit,
+  OnWorkerError,
+} from '../..';
 
 @DefineWorker()
 export class EventWorker {

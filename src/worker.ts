@@ -3,7 +3,6 @@ import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import { getWorkerCallbacks, getWorkerMethods } from './worker-method';
 import { findTypedStructClass } from './utility/find-typed-struct-cls';
-import { mutateTypedStructProto } from './utility/mutate-typed-struct-proto';
 import { AnyStructConstructor } from './utility/types';
 import {
   encodeMethodArgs,
@@ -194,24 +193,14 @@ const createTypedStructRegistration = (
   const structCls = findTypedStructClass(cls) as AnyStructConstructor | null;
   if (!structCls) return null;
 
-  let nextArgs: unknown[] | undefined;
-  const setOneShotArgs = (args: unknown[] | undefined): void => {
-    nextArgs = args;
-  };
   const typedStruct: WorkerTypedStructRegistration = {
     structCls,
     baseSize: structCls.baseSize,
-    mode: 'ctor',
+    mode: 'ctor', // Mode no longer used, kept for compatibility
     resolveBufferInfo: (ctorArgs: unknown[]) =>
       getTypedStructBufferInfo(structCls.baseSize, ctorArgs),
-    setOneShotArgs,
+    setOneShotArgs: () => {}, // No longer needed, kept for compatibility
   };
-  const mutated = mutateTypedStructProto(cls, () => {
-    const args = nextArgs;
-    nextArgs = undefined;
-    return args;
-  });
-  typedStruct.mode = mutated ? 'mutate' : 'ctor';
   return typedStruct;
 };
 
@@ -233,17 +222,24 @@ const setupWorkerRuntime = async (
   registration: WorkerRegistration,
 ): Promise<void> => {
   if (!parentPort) throw new Error('Worker parentPort is not available');
-  const ctorArgs = [...data.ctorArgs];
-  if (data.typedStruct && registration.typedStruct) {
-    const sharedBuffer = Buffer.from(data.typedStruct.sharedBuffer);
-    if (registration.typedStruct.mode === 'mutate') {
-      registration.typedStruct.setOneShotArgs([sharedBuffer, false]);
-    } else {
-      ctorArgs.splice(0, ctorArgs.length, sharedBuffer, false);
-    }
-  }
 
-  const instance = new cls(...ctorArgs);
+  let instance: any;
+  if (data.typedStruct && registration.typedStruct) {
+    // Use createTypedStructInstance for typed-struct classes
+    const {
+      createTypedStructInstance,
+    } = require('./utility/typed-struct-registry');
+    const sharedBuffer = Buffer.from(data.typedStruct.sharedBuffer);
+    instance = createTypedStructInstance(
+      cls,
+      sharedBuffer,
+      false,
+      data.ctorArgs,
+    );
+  } else {
+    // Regular class construction
+    instance = new cls(...data.ctorArgs);
+  }
   const workerMethods = new Set(getWorkerMethods(cls.prototype));
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
   const pendingCallbacks = new Map<
@@ -262,10 +258,10 @@ const setupWorkerRuntime = async (
   ): Promise<unknown> => {
     if (!parentPort)
       return Promise.reject(new Error('Worker parentPort is not available'));
-    
+
     // Encode arguments
     const encodedArgs = await encodeMethodArgs(cls.prototype, method, args);
-    
+
     return new Promise((resolve, reject) => {
       const id = nextCallbackId;
       nextCallbackId += 1;
@@ -332,20 +328,20 @@ const setupWorkerRuntime = async (
         message.method,
         Array.isArray(message.args) ? message.args : [],
       );
-      
+
       const result = await invokeWorkerMethod(
         instance as Record<string, unknown>,
         message.method,
         decodedArgs,
       );
-      
+
       // Encode return value
       const encodedResult = await encodeMethodReturn(
         cls.prototype,
         message.method,
         result,
       );
-      
+
       parentPort.postMessage({
         type: 'result',
         id: message.id,
@@ -397,6 +393,43 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
     if (!resolvedFilePath) {
       throw new Error('@DefineWorker() failed: cannot resolve class file path');
     }
+
+    // Scan the worker class itself for typed-struct
+    const {
+      safeScanTypedStructClass,
+    } = require('./utility/typed-struct-registry');
+    safeScanTypedStructClass(cls);
+
+    // Scan all WorkerMethod parameters and return types
+    const { getWorkerMethods } = require('./worker-method');
+    const methods = getWorkerMethods(cls.prototype);
+    for (const methodName of methods) {
+      try {
+        // Scan return type
+        const returnType = Reflect.getMetadata?.(
+          'design:returntype',
+          cls.prototype,
+          methodName,
+        );
+        if (returnType) {
+          safeScanTypedStructClass(returnType);
+        }
+
+        // Scan parameter types
+        const paramTypes: any[] =
+          Reflect.getMetadata?.(
+            'design:paramtypes',
+            cls.prototype,
+            methodName,
+          ) || [];
+        for (const paramType of paramTypes) {
+          safeScanTypedStructClass(paramType);
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
     const typedStruct = createTypedStructRegistration(cls);
     const registration: WorkerRegistration = {
       id: options.id ?? `${resolvedFilePath}#${cls.name || 'AnonymousClass'}`,

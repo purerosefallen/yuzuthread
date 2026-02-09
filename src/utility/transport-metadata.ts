@@ -1,5 +1,6 @@
 import { MetadataSetter, Reflector } from 'typed-reflector';
 import { AnyClass } from 'nfkit';
+import { safeScanTypedStructClass } from './typed-struct-registry';
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -10,7 +11,7 @@ export type TransportEncoder<T = any, U = any> = {
   decode: (encoded: U) => Awaitable<T>;
 };
 
-export type TransporterInfo = 
+export type TransporterInfo =
   | { type: 'class'; factory: TransportTypeFactory }
   | { type: 'encoder'; encoder: TransportEncoder };
 
@@ -38,16 +39,123 @@ export const transportReflector = new Reflector<
  * Marks transport type for method return value, parameter, or property.
  * @param factory Optional factory function that returns the class or [class] for array
  */
-export const TransportType = (factory?: TransportTypeFactory): PropertyDecorator & MethodDecorator & ParameterDecorator => {
+export const TransportType = (
+  factory?: TransportTypeFactory,
+): PropertyDecorator & MethodDecorator & ParameterDecorator => {
   if (!factory) {
     // No metadata registration, only for emitDecoratorMetadata
-    return (() => {}) as any;
+    // Still scan types from design: metadata
+    return ((
+      target: any,
+      propertyKey?: string | symbol,
+      parameterIndexOrDescriptor?: number | PropertyDescriptor,
+    ) => {
+      if (propertyKey === undefined) return;
+
+      try {
+        if (typeof parameterIndexOrDescriptor === 'number') {
+          // Parameter: scan param type
+          const paramTypes: any[] =
+            Reflect.getMetadata?.(
+              'design:paramtypes',
+              target,
+              propertyKey as string,
+            ) || [];
+          const paramType = paramTypes[parameterIndexOrDescriptor];
+          if (paramType) {
+            safeScanTypedStructClass(paramType);
+          }
+        } else if (parameterIndexOrDescriptor === undefined) {
+          // Property: scan property type
+          const propType = Reflect.getMetadata?.(
+            'design:type',
+            target,
+            propertyKey as string,
+          );
+          if (propType) {
+            safeScanTypedStructClass(propType);
+          }
+        } else if (typeof parameterIndexOrDescriptor === 'object') {
+          // Method: scan return type
+          const returnType = Reflect.getMetadata?.(
+            'design:returntype',
+            target,
+            propertyKey as string,
+          );
+          if (returnType) {
+            safeScanTypedStructClass(returnType);
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }) as any;
   }
 
-  return ((target: any, propertyKey?: string | symbol, parameterIndexOrDescriptor?: number | PropertyDescriptor) => {
+  return ((
+    target: any,
+    propertyKey?: string | symbol,
+    parameterIndexOrDescriptor?: number | PropertyDescriptor,
+  ) => {
     if (propertyKey === undefined) {
       // Class decorator - not supported
       throw new Error('@TransportType cannot be used as a class decorator');
+    }
+
+    // Scan the class from factory
+    try {
+      const result = factory();
+      const cls = Array.isArray(result) ? result[0] : result;
+      safeScanTypedStructClass(cls);
+    } catch {
+      // Ignore errors (class might not be defined yet)
+    }
+
+    // Also scan design: types
+    try {
+      if (typeof parameterIndexOrDescriptor === 'number') {
+        // Parameter: scan all param types
+        const paramTypes: any[] =
+          Reflect.getMetadata?.(
+            'design:paramtypes',
+            target,
+            propertyKey as string,
+          ) || [];
+        for (const paramType of paramTypes) {
+          safeScanTypedStructClass(paramType);
+        }
+      } else if (parameterIndexOrDescriptor === undefined) {
+        // Property: scan property type
+        const propType = Reflect.getMetadata?.(
+          'design:type',
+          target,
+          propertyKey as string,
+        );
+        if (propType) {
+          safeScanTypedStructClass(propType);
+        }
+      } else if (typeof parameterIndexOrDescriptor === 'object') {
+        // Method: scan return type and all param types
+        const returnType = Reflect.getMetadata?.(
+          'design:returntype',
+          target,
+          propertyKey as string,
+        );
+        if (returnType) {
+          safeScanTypedStructClass(returnType);
+        }
+        const paramTypes: any[] =
+          Reflect.getMetadata?.(
+            'design:paramtypes',
+            target,
+            propertyKey as string,
+          ) || [];
+        for (const paramType of paramTypes) {
+          safeScanTypedStructClass(paramType);
+        }
+      }
+    } catch {
+      // Ignore errors
     }
 
     const info: TransporterInfo = { type: 'class', factory };
@@ -55,15 +163,19 @@ export const TransportType = (factory?: TransportTypeFactory): PropertyDecorator
     if (typeof parameterIndexOrDescriptor === 'number') {
       // Parameter decorator
       const paramIndex = parameterIndexOrDescriptor;
-      const existing = transportReflector.get('transporter', target, propertyKey as string);
+      const existing = transportReflector.get(
+        'transporter',
+        target,
+        propertyKey as string,
+      );
       let params: Map<number, TransporterInfo>;
-      
+
       if (existing && existing.kind === 'params') {
         params = existing.params;
       } else {
         params = new Map<number, TransporterInfo>();
       }
-      
+
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
       TransportMetadata.set('transporter', data)(target, propertyKey as string);
@@ -91,7 +203,11 @@ export const TransportEncoder = <T = any, U = any>(
   const encoder: TransportEncoder<T, U> = { encode, decode };
   const info: TransporterInfo = { type: 'encoder', encoder };
 
-  return ((target: any, propertyKey?: string | symbol, parameterIndexOrDescriptor?: number | PropertyDescriptor) => {
+  return ((
+    target: any,
+    propertyKey?: string | symbol,
+    parameterIndexOrDescriptor?: number | PropertyDescriptor,
+  ) => {
     if (propertyKey === undefined) {
       throw new Error('@TransportEncoder cannot be used as a class decorator');
     }
@@ -99,15 +215,19 @@ export const TransportEncoder = <T = any, U = any>(
     if (typeof parameterIndexOrDescriptor === 'number') {
       // Parameter decorator
       const paramIndex = parameterIndexOrDescriptor;
-      const existing = transportReflector.get('transporter', target, propertyKey as string);
+      const existing = transportReflector.get(
+        'transporter',
+        target,
+        propertyKey as string,
+      );
       let params: Map<number, TransporterInfo>;
-      
+
       if (existing && existing.kind === 'params') {
         params = existing.params;
       } else {
         params = new Map<number, TransporterInfo>();
       }
-      
+
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
       TransportMetadata.set('transporter', data)(target, propertyKey as string);
@@ -126,7 +246,10 @@ export const TransportEncoder = <T = any, U = any>(
 /**
  * Get transporter info for method return type
  */
-export const getReturnTransporter = (target: any, propertyKey: string): TransporterInfo | null => {
+export const getReturnTransporter = (
+  target: any,
+  propertyKey: string,
+): TransporterInfo | null => {
   const data = transportReflector.get('transporter', target, propertyKey);
   if (!data) return null;
   if (data.kind === 'return') return data.info;
@@ -136,7 +259,10 @@ export const getReturnTransporter = (target: any, propertyKey: string): Transpor
 /**
  * Get transporter info for method parameters
  */
-export const getParamTransporters = (target: any, propertyKey: string): Map<number, TransporterInfo> => {
+export const getParamTransporters = (
+  target: any,
+  propertyKey: string,
+): Map<number, TransporterInfo> => {
   const data = transportReflector.get('transporter', target, propertyKey);
   if (!data) return new Map();
   if (data.kind === 'params') return data.params;
@@ -146,7 +272,10 @@ export const getParamTransporters = (target: any, propertyKey: string): Map<numb
 /**
  * Get transporter info for property
  */
-export const getPropertyTransporter = (target: any, propertyKey: string): TransporterInfo | null => {
+export const getPropertyTransporter = (
+  target: any,
+  propertyKey: string,
+): TransporterInfo | null => {
   const data = transportReflector.get('transporter', target, propertyKey);
   if (!data) return null;
   if (data.kind === 'property') return data.info;

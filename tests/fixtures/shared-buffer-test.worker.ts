@@ -1,5 +1,10 @@
 import { Struct } from 'typed-struct';
-import { WorkerMethod, DefineWorker, TransportType, TransportEncoder } from '../..';
+import {
+  WorkerMethod,
+  DefineWorker,
+  TransportType,
+  TransportEncoder,
+} from '../..';
 
 const Base = new Struct('SharedBufferTestBase')
   .UInt8('counter')
@@ -15,16 +20,16 @@ class SharedData extends Base {
 class ComplexSharedData extends Base {
   declare counter: number;
   declare timestamp: number;
-  
+
   @TransportType(() => SharedData)
   nested?: SharedData;
-  
+
   @TransportEncoder(
     (date: Date) => date.toISOString(),
     (str: string) => new Date(str),
   )
   createdAt?: Date;
-  
+
   metadata: string = '';
 }
 
@@ -32,9 +37,9 @@ class ComplexSharedData extends Base {
 class DataContainer {
   @TransportType(() => SharedData)
   sharedData!: SharedData;
-  
+
   label: string = '';
-  
+
   constructor(sharedData?: SharedData, label?: string) {
     if (sharedData) this.sharedData = sharedData;
     if (label) this.label = label;
@@ -44,7 +49,10 @@ class DataContainer {
 @DefineWorker()
 export class SharedBufferTestWorker {
   @WorkerMethod()
-  readValue(@TransportType(() => SharedData) data: SharedData): { counter: number; timestamp: number } {
+  readValue(@TransportType(() => SharedData) data: SharedData): {
+    counter: number;
+    timestamp: number;
+  } {
     // Worker 读取值
     return {
       counter: data.counter,
@@ -72,7 +80,7 @@ export class SharedBufferTestWorker {
     delayMs: number,
   ): Promise<void> {
     // 等待一段时间后修改值
-    await new Promise(resolve => setTimeout(resolve, delayMs));
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
     data.counter = 99;
     data.timestamp = 12345678;
   }
@@ -97,7 +105,6 @@ export class SharedBufferTestWorker {
     main.createdAt = new Date('2024-01-01');
     main.metadata = 'test';
 
-
     return main;
   }
 
@@ -108,13 +115,13 @@ export class SharedBufferTestWorker {
     // Modify main struct
     data.counter += 1;
     data.timestamp += 100;
-    
+
     // Modify nested struct
     if (data.nested) {
       data.nested.counter += 1;
       data.nested.timestamp += 100;
     }
-    
+
     // Modify regular fields
     data.metadata += ' modified';
   }
@@ -127,7 +134,6 @@ export class SharedBufferTestWorker {
     const sharedData = new SharedData(sharedBuffer, false);
     sharedData.counter = 20;
     sharedData.timestamp = 3000;
-
 
     return new DataContainer(sharedData, 'container');
   }

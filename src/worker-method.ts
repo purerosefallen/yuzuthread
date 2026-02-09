@@ -1,7 +1,35 @@
 import { Metadata, reflector, WorkerEventName } from './utility/metadata';
+import { safeScanTypedStructClass } from './utility/typed-struct-registry';
 
-export const WorkerMethod = (): MethodDecorator =>
-  Metadata.set('workerMethod', true, 'workerMethodKeys');
+export const WorkerMethod = (): MethodDecorator => {
+  return (target, propertyKey) => {
+    // Scan parameter types and return type
+    try {
+      const returnType = Reflect.getMetadata?.(
+        'design:returntype',
+        target,
+        propertyKey,
+      );
+      if (returnType) {
+        safeScanTypedStructClass(returnType);
+      }
+
+      const paramTypes: any[] =
+        Reflect.getMetadata?.('design:paramtypes', target, propertyKey) || [];
+      for (const paramType of paramTypes) {
+        safeScanTypedStructClass(paramType);
+      }
+    } catch {
+      // Ignore errors
+    }
+
+    return Metadata.set(
+      'workerMethod',
+      true,
+      'workerMethodKeys',
+    )(target, propertyKey);
+  };
+};
 
 export const WorkerCallback = (): MethodDecorator =>
   Metadata.set('workerCallback', true, 'workerCallbackKeys');

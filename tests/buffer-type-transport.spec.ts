@@ -23,7 +23,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
     declare count: number;
     customField: string = '';
     userName: string = '';
-    
+
     constructor(userName: string = '', initBuffer?: Buffer, clone?: boolean) {
       // First parameter is custom (userName)! NOT standard (raw?, clone?)
       // Decoder must call: new CustomConstructorData() with no args
@@ -37,20 +37,20 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
   class ComplexCustomData extends Base {
     declare value: number;
     declare count: number;
-    
+
     customField: string = '';
     label: string = '';
-    
+
     @TransportType(() => NestedData)
     nestedData?: NestedData;
-    
+
     sharedBuffer?: SharedArrayBuffer;
-    
+
     dataBuffer?: Buffer;
-    
+
     @TransportType(() => Date)
     timestamp?: Date;
-    
+
     constructor(label: string = '', initBuffer?: Buffer, clone?: boolean) {
       super(initBuffer as any, clone as any);
       this.label = label;
@@ -62,16 +62,18 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
     label: string = '';
     buffer?: Buffer;
     shared?: SharedArrayBuffer;
-    
+
     @TransportType(() => NestedData)
     nestedStruct?: NestedData;
-    
+
     constructor(label: string = '') {
       this.label = label;
     }
   }
 
-  let worker: Awaited<ReturnType<typeof initWorker<typeof BufferTypeTestWorker>>>;
+  let worker: Awaited<
+    ReturnType<typeof initWorker<typeof BufferTypeTestWorker>>
+  >;
 
   beforeAll(async () => {
     worker = await initWorker(BufferTypeTestWorker);
@@ -140,7 +142,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       const sab = new SharedArrayBuffer(5);
       const view = new Uint8Array(sab);
       view[0] = 60;
-      
+
       const dv = new DataView(sab);
       dv.setUint32(1, 600, true);
 
@@ -187,7 +189,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       // KEY TEST: CustomConstructorData has constructor(userName, initBuffer?, clone?)
       // First parameter is userName (string), NOT buffer!
       // Standard typed-struct signature is (raw?, clone?)
-      // 
+      //
       // If decoder blindly tried: new CustomConstructorData(buffer, false)
       // userName would receive Buffer object, initBuffer would be false - WRONG!
       //
@@ -207,14 +209,14 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
 
     it('should correctly decode instance passed back from worker', async () => {
       const result = await worker.createCustomData();
-      
+
       const initialValue = result.value;
       const initialCount = result.count;
-      
+
       // Pass it back to worker - this exercises the decoder again
       // Decoder must handle the custom constructor correctly
       await worker.modifyCustomData(result);
-      
+
       // Note: When worker creates SharedArrayBuffer and returns it,
       // then receives it back as parameter, struct fields are not necessarily shared
       // (the round-trip encoding/decoding may create separate buffers).
@@ -265,7 +267,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       // Verify nested typed-struct
       expect(result.nestedData).toBeDefined();
       expect(result.nestedData!.counter).toBe(50);
-      expect(result.nestedData!.flags).toBe(0xFF);
+      expect(result.nestedData!.flags).toBe(0xff);
 
       // Verify SharedArrayBuffer field
       expect(result.sharedBuffer).toBeDefined();
@@ -276,7 +278,9 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
 
       // Verify Buffer field (backed by SharedArrayBuffer)
       expect(result.dataBuffer).toBeDefined();
-      expect(result.dataBuffer!.buffer.constructor.name).toBe('SharedArrayBuffer');
+      expect(result.dataBuffer!.buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
       expect(result.dataBuffer!.readUInt8(0)).toBe(123);
       expect(result.dataBuffer!.readUInt32LE(1)).toBe(456789);
 
@@ -332,7 +336,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
 
       // Verify nested struct modified via SharedArrayBuffer
       expect(data.nestedData!.counter).toBe(15); // 10 + 5
-      expect(data.nestedData!.flags).toBe(0xAA);
+      expect(data.nestedData!.flags).toBe(0xaa);
 
       // Verify SharedArrayBuffer field modified
       expect(view[0]).toBe(6); // 5 + 1
@@ -407,7 +411,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       expect(data.value).toBe(20); // 10 + 10
       expect(data.count).toBe(40); // 20 + 20
       expect(data.nestedData.counter).toBe(35); // 30 + 5
-      expect(data.nestedData.flags).toBe(0xAA);
+      expect(data.nestedData.flags).toBe(0xaa);
       expect(view[0]).toBe(51); // 50 + 1
       expect(data.dataBuffer.readUInt8(0)).toBe(61); // 60 + 1
       expect(data.dataBuffer.readUInt32LE(1)).toBe(8100); // 8000 + 100
@@ -425,7 +429,9 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
 
       // Interesting: SharedArrayBuffer field IS shared even in round-trip!
       // The structured clone algorithm preserves SharedArrayBuffer references
-      expect(new Uint8Array(result.sharedBuffer!)[0]).toBe(initialSharedByte0 + 1); // 42 + 1 = 43
+      expect(new Uint8Array(result.sharedBuffer!)[0]).toBe(
+        initialSharedByte0 + 1,
+      ); // 42 + 1 = 43
       expect(new Uint8Array(result.sharedBuffer!)[15]).toBe(100); // 99 + 1 = 100
 
       // But typed-struct buffers are NOT shared in round-trip
@@ -465,7 +471,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       // Verify nested typed-struct
       expect(result.nestedStruct).toBeDefined();
       expect(result.nestedStruct!.counter).toBe(55);
-      expect(result.nestedStruct!.flags).toBe(0xBB);
+      expect(result.nestedStruct!.flags).toBe(0xbb);
       const nestedRaw = NestedStructBase.raw(result.nestedStruct!);
       expect(nestedRaw.buffer.constructor.name).toBe('SharedArrayBuffer');
     });
@@ -490,7 +496,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       const nestedBuffer = Buffer.from(nestedShared);
       container.nestedStruct = new NestedData(nestedBuffer, false);
       container.nestedStruct.counter = 50;
-      container.nestedStruct.flags = 0xDD;
+      container.nestedStruct.flags = 0xdd;
 
       // Send to worker for modification
       await worker.modifyDataContainer(container);
@@ -501,7 +507,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       expect(view[0]).toBe(31); // 30 + 1
       expect(view[31]).toBe(41); // 40 + 1
       expect(container.nestedStruct!.counter).toBe(60); // 50 + 10
-      expect(container.nestedStruct!.flags).toBe(0xCC);
+      expect(container.nestedStruct!.flags).toBe(0xcc);
 
       // Label preserved
       expect(container.label).toBe('main-container');
@@ -562,7 +568,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       expect(view[0]).toBe(12); // 11 + 1
       expect(view[31]).toBe(23); // 22 + 1
       expect(container.nestedStruct!.counter).toBe(43); // 33 + 10
-      expect(container.nestedStruct!.flags).toBe(0xCC);
+      expect(container.nestedStruct!.flags).toBe(0xcc);
     });
 
     it('should handle round-trip with worker-created DataContainer', async () => {
@@ -596,14 +602,14 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
     it('should handle Buffer with offset', async () => {
       const sharedMemory = new SharedArrayBuffer(10);
       const fullBuffer = Buffer.from(sharedMemory);
-      
+
       // Write to the full buffer
       fullBuffer.writeUInt8(11, 5);
       fullBuffer.writeUInt32LE(111, 6);
 
       // Create a sliced buffer
       const slicedBuffer = fullBuffer.subarray(5, 10);
-      
+
       const result = await worker.readBuffer(slicedBuffer);
       expect(result.value).toBe(11);
       expect(result.count).toBe(111);
@@ -611,7 +617,7 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
 
     it('should handle empty Buffer', async () => {
       const buffer = Buffer.alloc(0);
-      
+
       // Empty buffer cannot be read, expect error
       await expect(worker.readBuffer(buffer)).rejects.toThrow();
     });

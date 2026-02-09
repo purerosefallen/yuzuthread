@@ -1,4 +1,10 @@
-import { DefineWorker, WorkerMethod, WorkerCallback, TransportType, TransportEncoder } from '../..';
+import {
+  DefineWorker,
+  WorkerMethod,
+  WorkerCallback,
+  TransportType,
+  TransportEncoder,
+} from '../..';
 
 class CustomData {
   constructor(

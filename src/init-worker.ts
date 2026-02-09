@@ -73,26 +73,33 @@ export const initWorker = async <C extends AnyClass>(
 
   const workerMethods = getWorkerMethods(cls.prototype);
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
-  const localArgs = [...args] as unknown[];
   let typedStructPayload: WorkerDataPayload['typedStruct'] = null;
   const typedStruct = registration.typedStruct;
 
+  let instance: InstanceType<C>;
   if (typedStruct) {
-    const { byteLength, initial } = typedStruct.resolveBufferInfo(localArgs);
-    const sharedMemory = new SharedArrayBuffer(byteLength);
-    const sharedBuffer = Buffer.from(sharedMemory);
-    if (initial) Buffer.from(initial).copy(sharedBuffer);
-    if (typedStruct.mode === 'mutate') {
-      typedStruct.setOneShotArgs([sharedBuffer, false]);
-    } else {
-      localArgs.splice(0, localArgs.length, sharedBuffer, false);
-    }
-    typedStructPayload = { sharedBuffer: sharedMemory };
-  }
+    // First, create a temporary instance with user's args to get initial buffer values
+    const tempInstance = new cls(...(args as ConstructorParameters<C>));
+    const tempBuffer = typedStruct.structCls.raw(tempInstance) as Buffer;
 
-  const instance = new cls(...(localArgs as ConstructorParameters<C>));
+    // Create SharedArrayBuffer and copy initial values
+    const sharedMemory = new SharedArrayBuffer(tempBuffer.length);
+    const sharedBuffer = Buffer.from(sharedMemory);
+    tempBuffer.copy(sharedBuffer);
+
+    typedStructPayload = { sharedBuffer: sharedMemory };
+
+    // Use createTypedStructInstance with user's original args
+    const {
+      createTypedStructInstance,
+    } = require('./utility/typed-struct-registry');
+    instance = createTypedStructInstance(cls, sharedBuffer, false, args);
+  } else {
+    // Regular class construction
+    instance = new cls(...(args as ConstructorParameters<C>));
+  }
   const eventHandlers = getWorkerEventHandlers(cls.prototype);
-  
+
   const callEventHandlers = (event: string, ...eventArgs: unknown[]): void => {
     const handlers = eventHandlers.get(event);
     if (!handlers) return;
@@ -102,7 +109,10 @@ export const initWorker = async <C extends AnyClass>(
         try {
           handler.apply(instance, eventArgs);
         } catch (error) {
-          console.error(`Error in @OnWorkerEvent('${event}') handler ${handlerKey}:`, error);
+          console.error(
+            `Error in @OnWorkerEvent('${event}') handler ${handlerKey}:`,
+            error,
+          );
         }
       }
     }
@@ -288,10 +298,10 @@ export const initWorker = async <C extends AnyClass>(
   ): Promise<unknown> => {
     if (finalized)
       return Promise.reject(new Error('Worker has been finalized'));
-    
+
     // Encode arguments
     const encodedArgs = await encodeMethodArgs(cls.prototype, name, methodArgs);
-    
+
     return readyPromise.then(
       () =>
         new Promise((resolve, reject) => {
