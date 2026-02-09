@@ -224,8 +224,8 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       // The key here is that decoding works without error despite custom constructor.
       expect(result.customField).toBe('initialized'); // Not shared
       expect(result.userName).toBe('worker-user'); // Preserved but not modified by worker
-      expect(result.value).toBe(initialValue); // Not shared in round-trip
-      expect(result.count).toBe(initialCount); // Not shared in round-trip
+      expect(result.value).toBe(initialValue + 1); // Shared in round-trip
+      expect(result.count).toBe(initialCount + 1); // Shared in round-trip
     });
 
     it('should handle SharedArrayBuffer when main thread creates instance', async () => {
@@ -434,10 +434,9 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       ); // 42 + 1 = 43
       expect(new Uint8Array(result.sharedBuffer!)[15]).toBe(100); // 99 + 1 = 100
 
-      // But typed-struct buffers are NOT shared in round-trip
-      // (because we encode them to intermediate format and decode back)
-      expect(result.value).toBe(initialValue);
-      expect(result.nestedData!.counter).toBe(initialNestedCounter);
+      // typed-struct buffers are shared in round-trip
+      expect(result.value).toBe(initialValue + 10);
+      expect(result.nestedData!.counter).toBe(initialNestedCounter + 5);
 
       // Non-struct fields preserved
       expect(result.customField).toBe('complex');
@@ -590,8 +589,8 @@ describe('Buffer and SharedArrayBuffer Transport', () => {
       expect(new Uint8Array(result.shared!)[0]).toBe(initialSharedByte + 1);
       expect(new Uint8Array(result.shared!)[31]).toBe(112); // 111 + 1
 
-      // Nested typed-struct buffer NOT shared in round-trip
-      expect(result.nestedStruct!.counter).toBe(initialNestedCounter);
+      // Nested typed-struct buffer is shared in round-trip
+      expect(result.nestedStruct!.counter).toBe(initialNestedCounter + 10);
 
       // Non-shared field preserved
       expect(result.label).toBe('worker-container');

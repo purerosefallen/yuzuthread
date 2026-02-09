@@ -85,21 +85,11 @@ export const initWorker = async <C extends AnyClass>(
   const processedArgs = [...args];
 
   // Process @Shared parameters
-  if (sharedParams.size > 0) {
-    // Get parameter types from design:paramtypes
-    const paramTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
+  if (sharedParams.length > 0) {
+    for (const paramInfo of sharedParams) {
+      const index = paramInfo.index;
 
-    for (const [index, paramInfo] of sharedParams) {
       const arg = args[index];
-      const paramType = paramInfo.factory
-        ? paramInfo.factory()
-        : paramTypes[index];
-
-      if (!paramType) {
-        throw new TypeError(
-          `Cannot determine type for @Shared parameter at index ${index}`,
-        );
-      }
 
       // Convert argument to shared memory
       const sharedArg = toShared(arg);

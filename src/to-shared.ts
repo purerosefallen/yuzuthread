@@ -5,6 +5,7 @@ import {
   TYPED_ARRAYS,
   getTypedStructInfo,
 } from './utility/type-helpers';
+import { isSharedArrayBuffer } from './utility/is-shared-array-buffer';
 
 /**
  * Convert an object to use shared memory where possible
@@ -57,10 +58,7 @@ export const toShared = <T>(
     // Handle Buffer
     if (Buffer.isBuffer(value)) {
       // If already backed by SharedArrayBuffer, return as-is
-      if (
-        value.buffer instanceof SharedArrayBuffer ||
-        value.buffer.constructor?.name === 'SharedArrayBuffer'
-      ) {
+      if (isSharedArrayBuffer(value)) {
         return value;
       }
 
@@ -72,10 +70,7 @@ export const toShared = <T>(
     }
 
     // Handle SharedArrayBuffer
-    if (
-      value instanceof SharedArrayBuffer ||
-      value.constructor?.name === 'SharedArrayBuffer'
-    ) {
+    if (isSharedArrayBuffer(value)) {
       return value;
     }
 
@@ -104,10 +99,7 @@ export const toShared = <T>(
       // Get the raw buffer
       const rawBuffer = structInfo.structCls.raw(value) as Buffer;
 
-      if (
-        rawBuffer.buffer instanceof SharedArrayBuffer ||
-        rawBuffer.buffer.constructor?.name === 'SharedArrayBuffer'
-      ) {
+      if (isSharedArrayBuffer(rawBuffer)) {
         // it's already shared, so we only check fields and go
         const proto = ctor.prototype;
         for (const key of Object.keys(value)) {

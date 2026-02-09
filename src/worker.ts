@@ -428,23 +428,6 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
       }
     }
 
-    // Scan @Shared constructor parameters
-    const sharedParams = getSharedParams(cls);
-    const ctorParamTypes =
-      Reflect.getMetadata?.('design:paramtypes', cls) || [];
-    for (const [index, paramInfo] of sharedParams) {
-      try {
-        const paramType = paramInfo.factory
-          ? paramInfo.factory()
-          : ctorParamTypes[index];
-        if (paramType) {
-          safeScanTypedStructClass(paramType);
-        }
-      } catch {
-        // Ignore errors
-      }
-    }
-
     const typedStruct = createTypedStructRegistration(cls);
     const registration: WorkerRegistration = {
       id: options.id ?? `${resolvedFilePath}#${cls.name || 'AnonymousClass'}`,

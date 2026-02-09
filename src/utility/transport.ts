@@ -15,6 +15,7 @@ import {
   isPlainObject,
   getTypedStructInfo,
 } from './type-helpers';
+import { isSharedArrayBuffer } from './is-shared-array-buffer';
 
 type TransportContext = {
   path: string[];
@@ -85,9 +86,7 @@ export const encodeValue = async (
   // Handle Buffer -> encode with SharedArrayBuffer support
   if (Buffer.isBuffer(value)) {
     // Check if the buffer is backed by SharedArrayBuffer
-    const isSharedBuffer =
-      value.buffer instanceof SharedArrayBuffer ||
-      value.buffer?.constructor?.name === 'SharedArrayBuffer';
+    const isSharedBuffer = isSharedArrayBuffer(value);
 
     if (isSharedBuffer) {
       return {
@@ -107,10 +106,7 @@ export const encodeValue = async (
   }
 
   // Handle SharedArrayBuffer -> pass directly
-  if (
-    value instanceof SharedArrayBuffer ||
-    value?.constructor?.name === 'SharedArrayBuffer'
-  ) {
+  if (isSharedArrayBuffer(value)) {
     return {
       __type: 'SharedArrayBuffer',
       data: value,
@@ -156,7 +152,7 @@ export const encodeValue = async (
       const buffer = structInfo.structCls.raw(value) as Buffer;
 
       // Check if the buffer is backed by SharedArrayBuffer
-      if (buffer && buffer.buffer instanceof SharedArrayBuffer) {
+      if (buffer && isSharedArrayBuffer(buffer)) {
         // For SharedArrayBuffer, pass the SharedArrayBuffer directly
         // postMessage will transfer the reference, not copy it
         encoded.structBuffer = buffer.buffer;
@@ -278,9 +274,7 @@ export const decodeValue = async (
     if (encoded.__type === 'Buffer') {
       // Check if it's backed by SharedArrayBuffer
       const isSharedBuffer =
-        encoded.isShared &&
-        (encoded.data instanceof SharedArrayBuffer ||
-          encoded.data?.constructor?.name === 'SharedArrayBuffer');
+        encoded.isShared && isSharedArrayBuffer(encoded.data);
 
       if (isSharedBuffer) {
         // Create Buffer view from SharedArrayBuffer without copying
@@ -315,11 +309,7 @@ export const decodeValue = async (
       if (encoded.structBuffer) {
         // Check for SharedArrayBuffer using multiple methods (instanceof can fail across realms)
         const isSharedBuffer =
-          encoded.isShared &&
-          (encoded.structBuffer instanceof SharedArrayBuffer ||
-            encoded.structBuffer?.constructor?.name === 'SharedArrayBuffer' ||
-            Object.prototype.toString.call(encoded.structBuffer) ===
-              '[object SharedArrayBuffer]');
+          encoded.isShared && isSharedArrayBuffer(encoded.structBuffer);
 
         if (isSharedBuffer) {
           // For SharedArrayBuffer, create Buffer view directly

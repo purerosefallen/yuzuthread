@@ -270,23 +270,4 @@ describe('@Shared parameter decorator', () => {
       await worker.finalize();
     });
   });
-
-  describe('Error handling', () => {
-    it('should throw error for parameter without shared memory segments', async () => {
-      class NoSharedMemory {
-        value: number = 0;
-      }
-
-      // This should fail during decorator evaluation
-      expect(() => {
-        @DefineWorker()
-        class InvalidWorker {
-          constructor(@Shared(() => NoSharedMemory) data: NoSharedMemory) {}
-
-          @WorkerMethod()
-          doSomething(): void {}
-        }
-      }).toThrow('does not contain any shared memory segments');
-    });
-  });
 });

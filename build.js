@@ -18,7 +18,13 @@ function readJSONSafe(file, fallback = {}) {
 }
 function uniq(arr) { return Array.from(new Set(arr)); }
 function ensureDir(p) { fs.mkdirSync(p, { recursive: true }); }
-function rimraf(p) { if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); }
+function rimraf(p) {
+  if (fs.existsSync(p)) {
+    try {
+      fs.rmSync(p, { recursive: true, force: true });
+    } catch {}
+  }
+}
 
 function depsAsExternal(pkg) {
   const dep = Object.keys(pkg.dependencies || {});

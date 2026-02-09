@@ -256,9 +256,9 @@ describe('Shared Buffer Transport', () => {
       // Worker modifies (on its copy after round-trip)
       await worker.modifyComplexShared(result);
 
-      // Local modifications persist
-      expect(result.counter).toBe(100);
-      expect(result.nested!.counter).toBe(200);
+      // typed-struct fields are shared in round-trip
+      expect(result.counter).toBe(101);
+      expect(result.nested!.counter).toBe(201);
     });
   });
 
@@ -284,9 +284,9 @@ describe('Shared Buffer Transport', () => {
       // Worker modifies the container
       await worker.modifyContainer(result);
 
-      // Regular fields are not shared after round-trip
+      // Regular class fields are copied, but nested typed-struct field is shared
       expect(result.label).toBe(initialLabel);
-      expect(result.sharedData.counter).toBe(initialCounter);
+      expect(result.sharedData.counter).toBe(initialCounter + 5);
     });
 
     it('should handle main-thread modifications passed to worker', async () => {
