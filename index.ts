@@ -13,4 +13,6 @@ export type {
   TransportTypeFactory,
   TransportEncoder as TransportEncoderType,
 } from './src/utility/transport-metadata';
+export { Shared } from './src/utility/shared-decorator';
+export type { SharedTypeFactory } from './src/utility/shared-decorator';
 export * from './src/to-shared';

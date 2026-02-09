@@ -24,7 +24,9 @@ export interface TransportMetadataMap {
   transporter: TransporterData;
 }
 
-export interface TransportMetadataArrayMap {}
+export interface TransportMetadataArrayMap {
+  transporterKeys: string | symbol;
+}
 
 export const TransportMetadata = new MetadataSetter<
   TransportMetadataMap,
@@ -43,8 +45,7 @@ export const TransportType = (
   factory?: TransportTypeFactory,
 ): PropertyDecorator & MethodDecorator & ParameterDecorator => {
   if (!factory) {
-    // No metadata registration, only for emitDecoratorMetadata
-    // Still scan types from design: metadata
+    // Try to get factory from design:type metadata
     return ((
       target: any,
       propertyKey?: string | symbol,
@@ -52,9 +53,11 @@ export const TransportType = (
     ) => {
       if (propertyKey === undefined) return;
 
+      let resolvedFactory: TransportTypeFactory | undefined;
+
       try {
         if (typeof parameterIndexOrDescriptor === 'number') {
-          // Parameter: scan param type
+          // Parameter: get param type
           const paramTypes: any[] =
             Reflect.getMetadata?.(
               'design:paramtypes',
@@ -63,31 +66,68 @@ export const TransportType = (
             ) || [];
           const paramType = paramTypes[parameterIndexOrDescriptor];
           if (paramType) {
+            resolvedFactory = () => paramType;
             safeScanTypedStructClass(paramType);
           }
         } else if (parameterIndexOrDescriptor === undefined) {
-          // Property: scan property type
+          // Property: get property type
           const propType = Reflect.getMetadata?.(
             'design:type',
             target,
             propertyKey as string,
           );
           if (propType) {
+            resolvedFactory = () => propType;
             safeScanTypedStructClass(propType);
           }
         } else if (typeof parameterIndexOrDescriptor === 'object') {
-          // Method: scan return type
+          // Method: get return type
           const returnType = Reflect.getMetadata?.(
             'design:returntype',
             target,
             propertyKey as string,
           );
           if (returnType) {
+            resolvedFactory = () => returnType;
             safeScanTypedStructClass(returnType);
           }
         }
       } catch {
         // Ignore errors
+      }
+
+      // If we have a resolved factory, register metadata directly
+      if (resolvedFactory) {
+        const info: TransporterInfo = { type: 'class', factory: resolvedFactory };
+
+        if (typeof parameterIndexOrDescriptor === 'number') {
+          // Parameter decorator
+          const paramIndex = parameterIndexOrDescriptor;
+          const existing = transportReflector.get(
+            'transporter',
+            target,
+            propertyKey as string,
+          );
+          let params: Map<number, TransporterInfo>;
+
+          if (existing && existing.kind === 'params') {
+            params = existing.params;
+          } else {
+            params = new Map<number, TransporterInfo>();
+          }
+
+          params.set(paramIndex, info);
+          const data: TransporterData = { kind: 'params', params };
+          TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+        } else if (parameterIndexOrDescriptor === undefined) {
+          // Property decorator
+          const data: TransporterData = { kind: 'property', info };
+          TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+        } else if (typeof parameterIndexOrDescriptor === 'object') {
+          // Method decorator (return type)
+          const data: TransporterData = { kind: 'return', info };
+          TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+        }
       }
     }) as any;
   }
@@ -178,15 +218,15 @@ export const TransportType = (
 
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
-      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
     } else if (parameterIndexOrDescriptor === undefined) {
       // Property decorator
       const data: TransporterData = { kind: 'property', info };
-      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
     } else if (typeof parameterIndexOrDescriptor === 'object') {
       // Method decorator (return type)
       const data: TransporterData = { kind: 'return', info };
-      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
     }
   }) as any;
 };
@@ -230,15 +270,15 @@ export const TransportEncoder = <T = any, U = any>(
 
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
-      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
     } else if (parameterIndexOrDescriptor === undefined) {
       // Property decorator
       const data: TransporterData = { kind: 'property', info };
-      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
     } else if (typeof parameterIndexOrDescriptor === 'object') {
       // Method decorator (return type)
       const data: TransporterData = { kind: 'return', info };
-      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
     }
   }) as any;
 };

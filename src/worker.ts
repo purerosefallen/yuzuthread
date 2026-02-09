@@ -14,6 +14,8 @@ import {
   createTypedStructInstance,
   safeScanTypedStructClass,
 } from './utility/typed-struct-registry';
+import { getSharedParams } from './utility/shared-decorator';
+import { toShared } from './to-shared';
 
 type SerializedError = {
   message: string;
@@ -89,6 +91,10 @@ export type WorkerDataPayload = {
   typedStruct: {
     sharedBuffer: SharedArrayBuffer;
   } | null;
+  sharedParams: {
+    index: number;
+    sharedBuffer: SharedArrayBuffer;
+  }[] | null;
 };
 
 export type WorkerTypedStructRegistration = {
@@ -227,6 +233,52 @@ const setupWorkerRuntime = async (
 ): Promise<void> => {
   if (!parentPort) throw new Error('Worker parentPort is not available');
 
+  // Process @Shared parameters
+  const processedArgs = [...data.ctorArgs];
+  if (data.sharedParams) {
+    const sharedParams = getSharedParams(cls);
+    const paramTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
+
+    for (const sharedParamData of data.sharedParams) {
+      const { index, sharedBuffer } = sharedParamData;
+      const paramInfo = sharedParams.get(index);
+
+      if (!paramInfo) {
+        throw new Error(
+          `@Shared parameter at index ${index} not found in worker class`,
+        );
+      }
+
+      // Get the parameter type
+      const paramType = paramInfo.factory ? paramInfo.factory() : paramTypes[index];
+
+      if (!paramType) {
+        throw new TypeError(
+          `Cannot determine type for @Shared parameter at index ${index}`,
+        );
+      }
+
+      // Check if parameter type is a typed-struct
+      const { getTypedStructInfo } = require('./utility/type-helpers');
+      const structInfo = getTypedStructInfo(paramType);
+
+      let sharedArg: any;
+      if (structInfo) {
+        // For typed-struct, directly create instance from sharedBuffer
+        // Don't use toShared because data.ctorArgs[index] lost prototype through structured clone
+        const buffer = Buffer.from(sharedBuffer);
+        sharedArg = createTypedStructInstance(paramType, buffer, false, []);
+      } else {
+        // For non-typed-struct, use toShared (though this might not work well with broken prototypes)
+        const originalArg = data.ctorArgs[index];
+        sharedArg = toShared(originalArg, { useExistingSharedArrayBuffer: sharedBuffer });
+      }
+
+      // Update args
+      processedArgs[index] = sharedArg;
+    }
+  }
+
   let instance: any;
   if (data.typedStruct && registration.typedStruct) {
     // Use createTypedStructInstance for typed-struct classes
@@ -235,11 +287,11 @@ const setupWorkerRuntime = async (
       cls,
       sharedBuffer,
       false,
-      data.ctorArgs,
+      processedArgs,
     );
   } else {
     // Regular class construction
-    instance = new cls(...data.ctorArgs);
+    instance = new cls(...processedArgs);
   }
   const workerMethods = new Set(getWorkerMethods(cls.prototype));
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
@@ -420,6 +472,20 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
             methodName,
           ) || [];
         for (const paramType of paramTypes) {
+          safeScanTypedStructClass(paramType);
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    // Scan @Shared constructor parameters
+    const sharedParams = getSharedParams(cls);
+    const ctorParamTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
+    for (const [index, paramInfo] of sharedParams) {
+      try {
+        const paramType = paramInfo.factory ? paramInfo.factory() : ctorParamTypes[index];
+        if (paramType) {
           safeScanTypedStructClass(paramType);
         }
       } catch {

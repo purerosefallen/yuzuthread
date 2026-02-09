@@ -11,17 +11,28 @@ import {
  * Convert an object to use shared memory where possible
  * 
  * @param inst The object to convert
+ * @param options Optional configuration
+ * @param options.useExistingSharedArrayBuffer If provided, typed-struct classes will use this SharedArrayBuffer instead of creating a new one
  * @returns The converted object (modified in-place for user classes)
  * 
  * Behavior:
  * - Buffer: Creates a SharedArrayBuffer copy
  * - SharedArrayBuffer: Returns as-is
  * - Built-in types: Returns as-is (not supported)
- * - typed-struct classes: Creates new instance with SharedArrayBuffer, converts non-struct fields
- * - User classes: Recursively converts fields in-place (with circular reference protection)
+ * - typed-struct classes: Creates new instance with SharedArrayBuffer, converts non-struct fields with @TransportType
+ * - User classes: Recursively converts fields with @TransportType in-place (with circular reference protection)
  * - Arrays: Converts each element in-place
+ * 
+ * Field conversion rules:
+ * - Only fields with @TransportType decorator are converted
+ * - @TransportType with encoder mode is not converted (manual encoding)
+ * - @TransportType with built-in types is not converted
+ * - Fields without @TransportType are copied as-is
  */
-export const toShared = <T>(inst: T): T => {
+export const toShared = <T>(
+  inst: T,
+  options?: { useExistingSharedArrayBuffer?: SharedArrayBuffer },
+): T => {
   const visited = new WeakSet<object>();
 
   /**
@@ -117,10 +128,19 @@ export const toShared = <T>(inst: T): T => {
       // Get the raw buffer
       const rawBuffer = structInfo.structCls.raw(value) as Buffer;
 
-      // Create SharedArrayBuffer and copy data
-      const sharedMemory = new SharedArrayBuffer(rawBuffer.length);
-      const sharedBuffer = Buffer.from(sharedMemory);
-      rawBuffer.copy(sharedBuffer);
+      // Use existing SharedArrayBuffer or create a new one
+      let sharedBuffer: Buffer;
+      if (options?.useExistingSharedArrayBuffer) {
+        // Use the provided SharedArrayBuffer
+        sharedBuffer = Buffer.from(options.useExistingSharedArrayBuffer);
+        // Copy data to the provided buffer
+        rawBuffer.copy(sharedBuffer);
+      } else {
+        // Create a new SharedArrayBuffer and copy data
+        const sharedMemory = new SharedArrayBuffer(rawBuffer.length);
+        sharedBuffer = Buffer.from(sharedMemory);
+        rawBuffer.copy(sharedBuffer);
+      }
 
       // Get constructor parameters if needed
       const args: unknown[] = [];
@@ -128,6 +148,7 @@ export const toShared = <T>(inst: T): T => {
       // For most typed-struct classes, we can construct with buffer only
       
       // Create new instance with shared buffer
+      // typed-struct cannot replace buffer in-place, must create new instance
       const newInstance = createTypedStructInstance(
         ctor,
         sharedBuffer,
@@ -148,21 +169,16 @@ export const toShared = <T>(inst: T): T => {
 
         const fieldValue = value[key];
         
-        // Check for TransportType metadata or design:type
+        // Check for TransportType metadata
         const propTransporter = getPropertyTransporter(proto, key);
-        const propDesignType =
-          Reflect.getMetadata?.('design:type', proto, key);
 
-        // Only convert if there's explicit metadata:
-        // 1. TransportType with non-builtin class (not encoder)
-        // 2. design:type with non-builtin type
-        if (
-          shouldConvertWithTransporter(propTransporter) ||
-          (propDesignType && !isBuiltinType(propDesignType))
-        ) {
+        // Only convert if TransportType is present and:
+        // - It's a class type (not encoder)
+        // - The class is not a built-in type
+        if (shouldConvertWithTransporter(propTransporter)) {
           (newInstance as any)[key] = convert(fieldValue);
         } else {
-          // No metadata, copy as-is
+          // No TransportType or encoder/builtin type, copy as-is
           (newInstance as any)[key] = fieldValue;
         }
       }
@@ -180,18 +196,13 @@ export const toShared = <T>(inst: T): T => {
       for (const key of Object.keys(value)) {
         const fieldValue = value[key];
         
-        // Check for TransportType metadata or design:type
+        // Check for TransportType metadata
         const propTransporter = getPropertyTransporter(proto, key);
-        const propDesignType =
-          Reflect.getMetadata?.('design:type', proto, key);
 
-        // Only convert if there's explicit metadata:
-        // 1. TransportType with non-builtin class (not encoder)
-        // 2. design:type with non-builtin type
-        if (
-          shouldConvertWithTransporter(propTransporter) ||
-          (propDesignType && !isBuiltinType(propDesignType))
-        ) {
+        // Only convert if TransportType is present and:
+        // - It's a class type (not encoder)
+        // - The class is not a built-in type
+        if (shouldConvertWithTransporter(propTransporter)) {
           value[key] = convert(fieldValue);
         }
         // Otherwise, leave the field as-is

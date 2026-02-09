@@ -22,6 +22,9 @@ import {
   decodeMethodArgs,
 } from './utility/transport';
 import { createTypedStructInstance } from './utility/typed-struct-registry';
+import { getSharedParams, hasSharedMemorySegments } from './utility/shared-decorator';
+import { toShared } from './to-shared';
+import { getTypedStructInfo } from './utility/type-helpers';
 
 type ErrorLike = {
   message: string;
@@ -75,12 +78,68 @@ export const initWorker = async <C extends AnyClass>(
   const workerMethods = getWorkerMethods(cls.prototype);
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
   let typedStructPayload: WorkerDataPayload['typedStruct'] = null;
+  let sharedParamsPayload: WorkerDataPayload['sharedParams'] = null;
   const typedStruct = registration.typedStruct;
+
+  // Scan for @Shared parameters
+  const sharedParams = getSharedParams(cls);
+  const processedArgs = [...args];
+
+  // Process @Shared parameters
+  if (sharedParams.size > 0) {
+    sharedParamsPayload = [];
+
+    // Get parameter types from design:paramtypes
+    const paramTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
+
+    for (const [index, paramInfo] of sharedParams) {
+      const arg = args[index];
+      const paramType = paramInfo.factory ? paramInfo.factory() : paramTypes[index];
+
+      if (!paramType) {
+        throw new TypeError(
+          `Cannot determine type for @Shared parameter at index ${index}`,
+        );
+      }
+
+      // Check if the argument value is provided
+      if (arg === undefined || arg === null) {
+        throw new TypeError(
+          `@Shared parameter at index ${index} is required but got ${arg}`,
+        );
+      }
+
+      // Calculate memory size for this parameter
+      const { calculateSharedMemorySize } = require('./utility/shared-decorator');
+      const memorySize = calculateSharedMemorySize(arg);
+
+      if (memorySize === 0) {
+        throw new TypeError(
+          `@Shared parameter at index ${index} has no shared memory segments`,
+        );
+      }
+
+      // Allocate SharedArrayBuffer for this parameter
+      const sharedBuffer = new SharedArrayBuffer(memorySize);
+
+      // Convert argument to shared memory
+      const sharedArg = toShared(arg, { useExistingSharedArrayBuffer: sharedBuffer });
+
+      // Update processed args for worker construction
+      processedArgs[index] = sharedArg;
+
+      // Store SharedArrayBuffer reference for worker
+      sharedParamsPayload.push({
+        index,
+        sharedBuffer,
+      });
+    }
+  }
 
   let instance: InstanceType<C>;
   if (typedStruct) {
-    // First, create a temporary instance with user's args to get initial buffer values
-    const tempInstance = new cls(...(args as ConstructorParameters<C>));
+    // First, create a temporary instance with processed args to get initial buffer values
+    const tempInstance = new cls(...(processedArgs as ConstructorParameters<C>));
     const tempBuffer = typedStruct.structCls.raw(tempInstance) as Buffer;
 
     // Create SharedArrayBuffer and copy initial values
@@ -90,11 +149,11 @@ export const initWorker = async <C extends AnyClass>(
 
     typedStructPayload = { sharedBuffer: sharedMemory };
     
-    // Use createTypedStructInstance with user's original args
-    instance = createTypedStructInstance(cls, sharedBuffer, false, args);
+    // Use createTypedStructInstance with processed args
+    instance = createTypedStructInstance(cls, sharedBuffer, false, processedArgs as any);
   } else {
     // Regular class construction
-    instance = new cls(...(args as ConstructorParameters<C>));
+    instance = new cls(...(processedArgs as ConstructorParameters<C>));
   }
   const eventHandlers = getWorkerEventHandlers(cls.prototype);
 
@@ -121,8 +180,9 @@ export const initWorker = async <C extends AnyClass>(
   } = {
     __yuzuthread: true,
     classId: registration.id,
-    ctorArgs: args as unknown[],
+    ctorArgs: processedArgs as unknown[],
     typedStruct: typedStructPayload,
+    sharedParams: sharedParamsPayload,
     __entryFile: registration.filePath,
   };
   const worker = new Worker(WORKER_BOOTSTRAP, {
