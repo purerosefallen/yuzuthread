@@ -138,7 +138,74 @@ console.log(instance.value); // -> 0x7f
 await instance.finalize();
 ```
 
+## Worker Status
+
+You can check the worker status at any time using `workerStatus()`:
+
+```ts
+const worker = await initWorker(CounterWorker);
+console.log(worker.workerStatus()); // -> 'Ready'
+
+await worker.increment(5);
+console.log(worker.workerStatus()); // -> 'Ready'
+
+await worker.finalize();
+console.log(worker.workerStatus()); // -> 'Finalized'
+```
+
+Possible status values (`WorkerStatus` enum):
+- `Initializing` - Worker is being created
+- `Ready` - Worker is ready to accept calls
+- `InitError` - Worker failed to initialize
+- `WorkerError` - Worker encountered a runtime error
+- `Exited` - Worker exited unexpectedly
+- `Finalized` - Worker was finalized via `finalize()`
+
+## Worker Event Handlers
+
+You can handle worker lifecycle events in the main thread using event decorators:
+
+```ts
+import { DefineWorker, WorkerMethod, OnWorkerEvent, OnWorkerExit, OnWorkerError, initWorker } from 'yuzuthread';
+
+@DefineWorker()
+class MonitoredWorker {
+  @WorkerMethod()
+  async doWork() {
+    // some work
+  }
+
+  @OnWorkerError()
+  handleError(error: Error) {
+    console.log('Worker error:', error.message);
+  }
+
+  @OnWorkerExit()
+  handleExit(code: number) {
+    console.log('Worker exited with code:', code);
+  }
+
+  @OnWorkerEvent('online')
+  handleOnline() {
+    console.log('Worker is online');
+  }
+}
+
+const worker = await initWorker(MonitoredWorker);
+// Event handlers will be called automatically when events occur
+```
+
+Available decorators:
+- `@OnWorkerEvent(event: WorkerEventName)` - Handle any worker event (e.g., 'online', 'message', 'messageerror')
+  - `WorkerEventName` is typed to match `Worker.on()` events for type safety
+- `@OnWorkerError()` - Shorthand for `@OnWorkerEvent('error')`
+- `@OnWorkerExit()` - Shorthand for `@OnWorkerEvent('exit')`
+
+Event handlers run on the main thread and can access the main-thread instance state. Multiple handlers can be registered for the same event. If a handler throws an error, it will be logged but won't affect other handlers or worker operation.
+
 ## API
+
+### Decorators
 
 - `DefineWorker(options?)`
   - `options.filePath?`: worker file path override (optional, auto-inferred by default)
@@ -147,10 +214,30 @@ await instance.finalize();
   - marks a method to execute on worker thread
 - `WorkerCallback()`
   - marks a method to execute on main thread when called from worker
+- `OnWorkerEvent(event: WorkerEventName)`
+  - marks a method to handle worker events on main thread
+  - `WorkerEventName` is typed to match `Worker.on()` for type safety
+  - supports: 'error', 'exit', 'online', 'message', 'messageerror'
+- `OnWorkerError()`
+  - shorthand for `@OnWorkerEvent('error')`
+- `OnWorkerExit()`
+  - shorthand for `@OnWorkerEvent('exit')`
+
+### Functions
+
 - `initWorker(cls, ...args)`
-  - creates a persistent worker and returns instance with `finalize(): Promise<void>`
+  - creates a persistent worker and returns instance with `finalize(): Promise<void>` and `workerStatus(): WorkerStatus`
 - `runInWorker(cls, cb, ...args)`
   - one-time worker execution with automatic finalize
+
+### Types
+
+- `WorkerStatus`
+  - enum for worker status states
+- `WorkerInstance<T>`
+  - type for worker instance with `finalize()` and `workerStatus()` methods
+- `WorkerEventName`
+  - type for worker event names, matches `Worker.on()` event parameter
 
 ## Notes
 

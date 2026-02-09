@@ -14,7 +14,8 @@ type BridgeConstructor = AnyStructConstructor & {
 
 const getBridgeState = (target: unknown): BridgeState | null => {
   if (typeof target !== 'function') return null;
-  return ((target as BridgeConstructor)[BRIDGE_STATE] ?? null) as BridgeState | null;
+  return ((target as BridgeConstructor)[BRIDGE_STATE] ??
+    null) as BridgeState | null;
 };
 
 export const mutateTypedStructProto = <T = any>(
@@ -43,7 +44,10 @@ export const mutateTypedStructProto = <T = any>(
       if (args.length === 0) super();
       else if (args.length === 1) super(args[0] as never);
       else if (args.length === 2) super(args[0] as never, args[1] as never);
-      else throw new TypeError('typed-struct constructor accepts at most 2 arguments');
+      else
+        throw new TypeError(
+          'typed-struct constructor accepts at most 2 arguments',
+        );
     }
   };
   Object.defineProperty(bridge, BRIDGE_STATE, {

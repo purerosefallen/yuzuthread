@@ -22,8 +22,12 @@ describe('runInWorker', () => {
   });
 
   it('should create a new worker for each call', async () => {
-    const first = await runInWorker(CounterWorker, (counter) => counter.increment(1));
-    const second = await runInWorker(CounterWorker, (counter) => counter.increment(1));
+    const first = await runInWorker(CounterWorker, (counter) =>
+      counter.increment(1),
+    );
+    const second = await runInWorker(CounterWorker, (counter) =>
+      counter.increment(1),
+    );
 
     expect(first).toEqual({ count: 1, isMainThread: false });
     expect(second).toEqual({ count: 1, isMainThread: false });

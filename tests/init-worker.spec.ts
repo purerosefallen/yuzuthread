@@ -1,4 +1,4 @@
-import { initWorker } from '..';
+import { initWorker, WorkerStatus } from '..';
 import { CounterWorker } from './fixtures/counter.worker.js';
 import { SharedStructWorker } from './fixtures/shared-struct.worker.js';
 
@@ -6,10 +6,16 @@ describe('initWorker', () => {
   it('should work as a normal class when instantiated directly', async () => {
     const counter = new CounterWorker();
 
-    expect(await counter.increment(2)).toEqual({ count: 2, isMainThread: true });
+    expect(await counter.increment(2)).toEqual({
+      count: 2,
+      isMainThread: true,
+    });
     expect(counter.add(1, 2)).toBe(3);
     expect(counter.onMainAdd(3, 4)).toEqual({ count: 9, isMainThread: true });
-    expect(await counter.callMainAdd(1, 1)).toEqual({ count: 11, isMainThread: true });
+    expect(await counter.callMainAdd(1, 1)).toEqual({
+      count: 11,
+      isMainThread: true,
+    });
   });
 
   it('should execute @WorkerMethod in worker thread', async () => {
@@ -32,7 +38,9 @@ describe('initWorker', () => {
   it('should reject worker calls after finalize', async () => {
     const counter = await initWorker(CounterWorker);
     await counter.finalize();
-    await expect(counter.add(1, 2)).rejects.toThrow('Worker has been finalized');
+    await expect(counter.add(1, 2)).rejects.toThrow(
+      'Worker has been finalized',
+    );
   });
 
   it('should execute @WorkerCallback on main thread when invoked from worker', async () => {
@@ -55,5 +63,30 @@ describe('initWorker', () => {
     expect(remote).toEqual({ count: 1, isMainThread: false });
     expect(counter.count).toBe(9);
     await counter.finalize();
+  });
+
+  it('should report Ready status after initialization', async () => {
+    const counter = await initWorker(CounterWorker);
+    expect(counter.workerStatus()).toBe(WorkerStatus.Ready);
+    await counter.finalize();
+  });
+
+  it('should report Finalized status after finalize', async () => {
+    const counter = await initWorker(CounterWorker);
+    expect(counter.workerStatus()).toBe(WorkerStatus.Ready);
+    await counter.finalize();
+    expect(counter.workerStatus()).toBe(WorkerStatus.Finalized);
+  });
+
+  it('should report status transitions correctly', async () => {
+    const counter = await initWorker(CounterWorker);
+
+    expect(counter.workerStatus()).toBe(WorkerStatus.Ready);
+
+    await counter.increment(1);
+    expect(counter.workerStatus()).toBe(WorkerStatus.Ready);
+
+    await counter.finalize();
+    expect(counter.workerStatus()).toBe(WorkerStatus.Finalized);
   });
 });

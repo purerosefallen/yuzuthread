@@ -77,18 +77,19 @@ export type WorkerDataPayload = {
   __yuzuthread: true;
   classId: string;
   ctorArgs: unknown[];
-  typedStruct:
-    | {
-        sharedBuffer: SharedArrayBuffer;
-      }
-    | null;
+  typedStruct: {
+    sharedBuffer: SharedArrayBuffer;
+  } | null;
 };
 
 export type WorkerTypedStructRegistration = {
   structCls: AnyStructConstructor;
   baseSize: number;
   mode: 'mutate' | 'ctor';
-  resolveBufferInfo: (ctorArgs: unknown[]) => { byteLength: number; initial: Uint8Array | null };
+  resolveBufferInfo: (ctorArgs: unknown[]) => {
+    byteLength: number;
+    initial: Uint8Array | null;
+  };
   setOneShotArgs: (args: unknown[] | undefined) => void;
 };
 
@@ -144,27 +145,38 @@ const getTypedStructBufferInfo = (
 ): { byteLength: number; initial: Uint8Array | null } => {
   const firstArg = ctorArgs[0];
   if (Buffer.isBuffer(firstArg)) {
-    if (firstArg.length < baseSize) throw new TypeError('Invalid typed-struct buffer size');
+    if (firstArg.length < baseSize)
+      throw new TypeError('Invalid typed-struct buffer size');
     return { byteLength: firstArg.length, initial: firstArg };
   }
   if (Array.isArray(firstArg)) {
-    if (firstArg.length < baseSize) throw new TypeError('Invalid typed-struct array size');
+    if (firstArg.length < baseSize)
+      throw new TypeError('Invalid typed-struct array size');
     return { byteLength: firstArg.length, initial: Uint8Array.from(firstArg) };
   }
   if (ArrayBuffer.isView(firstArg)) {
     const view = firstArg as ArrayBufferView;
-    if (view.byteLength < baseSize) throw new TypeError('Invalid typed-struct view size');
+    if (view.byteLength < baseSize)
+      throw new TypeError('Invalid typed-struct view size');
     return {
       byteLength: view.byteLength,
       initial: new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
     };
   }
-  if (firstArg instanceof ArrayBuffer || firstArg instanceof SharedArrayBuffer) {
-    if (firstArg.byteLength < baseSize) throw new TypeError('Invalid typed-struct buffer size');
-    return { byteLength: firstArg.byteLength, initial: new Uint8Array(firstArg) };
+  if (
+    firstArg instanceof ArrayBuffer ||
+    firstArg instanceof SharedArrayBuffer
+  ) {
+    if (firstArg.byteLength < baseSize)
+      throw new TypeError('Invalid typed-struct buffer size');
+    return {
+      byteLength: firstArg.byteLength,
+      initial: new Uint8Array(firstArg),
+    };
   }
   if (typeof firstArg === 'number') {
-    if (firstArg < baseSize) throw new TypeError('Invalid typed-struct buffer size');
+    if (firstArg < baseSize)
+      throw new TypeError('Invalid typed-struct buffer size');
     return { byteLength: firstArg, initial: null };
   }
   return { byteLength: baseSize, initial: null };
@@ -184,7 +196,8 @@ const createTypedStructRegistration = (
     structCls,
     baseSize: structCls.baseSize,
     mode: 'ctor',
-    resolveBufferInfo: (ctorArgs: unknown[]) => getTypedStructBufferInfo(structCls.baseSize, ctorArgs),
+    resolveBufferInfo: (ctorArgs: unknown[]) =>
+      getTypedStructBufferInfo(structCls.baseSize, ctorArgs),
     setOneShotArgs,
   };
   const mutated = mutateTypedStructProto(cls, () => {
@@ -233,8 +246,12 @@ const setupWorkerRuntime = async (
   >();
   let nextCallbackId = 1;
 
-  const callMainCallback = (method: string, args: unknown[]): Promise<unknown> => {
-    if (!parentPort) return Promise.reject(new Error('Worker parentPort is not available'));
+  const callMainCallback = (
+    method: string,
+    args: unknown[],
+  ): Promise<unknown> => {
+    if (!parentPort)
+      return Promise.reject(new Error('Worker parentPort is not available'));
     return new Promise((resolve, reject) => {
       const id = nextCallbackId;
       nextCallbackId += 1;
@@ -265,7 +282,10 @@ const setupWorkerRuntime = async (
       pendingCallbacks.delete(message.id);
       if (message.ok) pending.resolve(message.result);
       else {
-        const failed = message as Extract<WorkerCallbackResultMessage, { ok: false }>;
+        const failed = message as Extract<
+          WorkerCallbackResultMessage,
+          { ok: false }
+        >;
         pending.reject(new Error(failed.error.message));
       }
       return;
@@ -281,7 +301,9 @@ const setupWorkerRuntime = async (
         type: 'result',
         id: message.id,
         ok: false,
-        error: { message: `Method is not decorated with @WorkerMethod(): ${message.method}` },
+        error: {
+          message: `Method is not decorated with @WorkerMethod(): ${message.method}`,
+        },
       } satisfies WorkerHostMessage);
       return;
     }
@@ -310,7 +332,10 @@ const setupWorkerRuntime = async (
   parentPort.postMessage({ type: 'ready' } satisfies WorkerHostMessage);
 };
 
-const tryStartWorkerForClass = (target: AnyClass, registration: WorkerRegistration): void => {
+const tryStartWorkerForClass = (
+  target: AnyClass,
+  registration: WorkerRegistration,
+): void => {
   if (isMainThread || !parentPort) return;
   const data = workerData as WorkerDataPayload | undefined;
   if (!data || data.__yuzuthread !== true) return;

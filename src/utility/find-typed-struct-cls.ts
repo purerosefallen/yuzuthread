@@ -9,7 +9,8 @@ const hasTypedStructStatics = (
   target: Record<string, unknown>,
   ownOnly: boolean,
 ): boolean => {
-  const hasField = (key: string): boolean => (ownOnly ? hasOwn(target, key) : key in target);
+  const hasField = (key: string): boolean =>
+    ownOnly ? hasOwn(target, key) : key in target;
   return (
     hasField('baseSize') &&
     typeof target.baseSize === 'number' &&
@@ -26,14 +27,19 @@ const hasTypedStructStatics = (
   );
 };
 
-const isTypedStructClass = (target: unknown): target is AnyStructConstructor => {
+const isTypedStructClass = (
+  target: unknown,
+): target is AnyStructConstructor => {
   if (typeof target !== 'function') return false;
   const value = target as unknown as Record<string, unknown>;
   if (!hasTypedStructStatics(value, false)) return false;
   if (hasTypedStructStatics(value, true)) return true;
   const parent = Object.getPrototypeOf(target);
   if (typeof parent !== 'function') return false;
-  return hasTypedStructStatics(parent as unknown as Record<string, unknown>, true);
+  return hasTypedStructStatics(
+    parent as unknown as Record<string, unknown>,
+    true,
+  );
 };
 
 export const findTypedStructClass = <T>(
@@ -41,7 +47,8 @@ export const findTypedStructClass = <T>(
 ): StructConstructor<T, string> | null => {
   let current: unknown = cls;
   while (typeof current === 'function') {
-    if (isTypedStructClass(current)) return current as StructConstructor<T, string>;
+    if (isTypedStructClass(current))
+      return current as StructConstructor<T, string>;
     current = Object.getPrototypeOf(current);
   }
   return null;

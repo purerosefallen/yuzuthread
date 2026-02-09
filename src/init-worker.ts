@@ -1,6 +1,10 @@
 import { AnyClass } from 'nfkit';
 import { Worker } from 'node:worker_threads';
-import { getWorkerCallbacks, getWorkerMethods } from './worker-method';
+import {
+  getWorkerCallbacks,
+  getWorkerMethods,
+  getWorkerEventHandlers,
+} from './worker-method';
 import {
   getWorkerRegistration,
   WorkerCallbackInvokeMessage,
@@ -10,6 +14,7 @@ import {
   WorkerInvokeMessage,
   WorkerResultMessage,
 } from './worker';
+import { WorkerStatus } from './utility/types';
 
 type ErrorLike = {
   message: string;
@@ -44,13 +49,20 @@ const { workerData } = require('node:worker_threads');
 require(workerData.__entryFile);
 `;
 
+export type WorkerInstance<T> = T & {
+  finalize: () => Promise<void>;
+  workerStatus: () => WorkerStatus;
+};
+
 export const initWorker = async <C extends AnyClass>(
   cls: C,
   ...args: ConstructorParameters<C>
-): Promise<InstanceType<C> & { finalize: () => Promise<void> }> => {
+): Promise<WorkerInstance<InstanceType<C>>> => {
   const registration = getWorkerRegistration(cls);
   if (!registration) {
-    throw new Error(`@DefineWorker() is required for ${cls.name || 'AnonymousClass'}`);
+    throw new Error(
+      `@DefineWorker() is required for ${cls.name || 'AnonymousClass'}`,
+    );
   }
 
   const workerMethods = getWorkerMethods(cls.prototype);
@@ -73,6 +85,23 @@ export const initWorker = async <C extends AnyClass>(
   }
 
   const instance = new cls(...(localArgs as ConstructorParameters<C>));
+  const eventHandlers = getWorkerEventHandlers(cls.prototype);
+  
+  const callEventHandlers = (event: string, ...eventArgs: unknown[]): void => {
+    const handlers = eventHandlers.get(event);
+    if (!handlers) return;
+    for (const handlerKey of handlers) {
+      const handler = (instance as Record<string, unknown>)[handlerKey];
+      if (typeof handler === 'function') {
+        try {
+          handler.apply(instance, eventArgs);
+        } catch (error) {
+          console.error(`Error in @OnWorkerEvent('${event}') handler ${handlerKey}:`, error);
+        }
+      }
+    }
+  };
+
   const workerData: WorkerDataPayload & {
     __entryFile: string;
   } = {
@@ -89,6 +118,7 @@ export const initWorker = async <C extends AnyClass>(
 
   let finalized = false;
   let ready = false;
+  let status = WorkerStatus.Initializing;
   let nextCallId = 1;
   const pending = new Map<
     number,
@@ -113,9 +143,11 @@ export const initWorker = async <C extends AnyClass>(
     switch (message.type) {
       case 'ready':
         ready = true;
+        status = WorkerStatus.Ready;
         resolveReady();
         return;
       case 'init-error': {
+        status = WorkerStatus.InitError;
         const error = toError(message.error, 'Failed to initialize worker');
         rejectReady(error);
         rejectAll(error);
@@ -128,7 +160,9 @@ export const initWorker = async <C extends AnyClass>(
         if (message.ok) callback.resolve(message.result);
         else {
           const failed = message as Extract<WorkerResultMessage, { ok: false }>;
-          callback.reject(toError(failed.error, 'Worker method execution failed'));
+          callback.reject(
+            toError(failed.error, 'Worker method execution failed'),
+          );
         }
         return;
       }
@@ -139,18 +173,24 @@ export const initWorker = async <C extends AnyClass>(
             type: 'callback-result',
             id: callbackInvoke.id,
             ok: false,
-            error: { message: `Method is not decorated with @WorkerCallback(): ${callbackInvoke.method}` },
+            error: {
+              message: `Method is not decorated with @WorkerCallback(): ${callbackInvoke.method}`,
+            },
           } satisfies WorkerInvokeMessage);
           return;
         }
 
-        const method = (instance as Record<string, unknown>)[callbackInvoke.method];
+        const method = (instance as Record<string, unknown>)[
+          callbackInvoke.method
+        ];
         if (typeof method !== 'function') {
           worker.postMessage({
             type: 'callback-result',
             id: callbackInvoke.id,
             ok: false,
-            error: { message: `Worker callback not found: ${callbackInvoke.method}` },
+            error: {
+              message: `Worker callback not found: ${callbackInvoke.method}`,
+            },
           } satisfies WorkerInvokeMessage);
           return;
         }
@@ -171,7 +211,10 @@ export const initWorker = async <C extends AnyClass>(
             } satisfies WorkerInvokeMessage);
           })
           .catch((error: unknown) => {
-            const callbackError: Extract<WorkerCallbackResultMessage, { ok: false }> = {
+            const callbackError: Extract<
+              WorkerCallbackResultMessage,
+              { ok: false }
+            > = {
               type: 'callback-result',
               id: callbackInvoke.id,
               ok: false,
@@ -188,12 +231,18 @@ export const initWorker = async <C extends AnyClass>(
   });
 
   worker.on('error', (error) => {
+    status = WorkerStatus.WorkerError;
+    callEventHandlers('error', error);
     const err = toError(error, 'Worker error');
     if (!ready) rejectReady(err);
     rejectAll(err);
   });
 
   worker.on('exit', (code) => {
+    if (!finalized) {
+      status = WorkerStatus.Exited;
+    }
+    callEventHandlers('exit', code);
     if (!ready && !finalized) {
       rejectReady(new Error(`Worker exited before ready (code: ${code})`));
     }
@@ -202,8 +251,20 @@ export const initWorker = async <C extends AnyClass>(
     }
   });
 
-  const callWorkerMethod = (name: string, methodArgs: unknown[]): Promise<unknown> => {
-    if (finalized) return Promise.reject(new Error('Worker has been finalized'));
+  worker.on('online', () => {
+    callEventHandlers('online');
+  });
+
+  worker.on('messageerror', (error) => {
+    callEventHandlers('messageerror', error);
+  });
+
+  const callWorkerMethod = (
+    name: string,
+    methodArgs: unknown[],
+  ): Promise<unknown> => {
+    if (finalized)
+      return Promise.reject(new Error('Worker has been finalized'));
     return readyPromise.then(
       () =>
         new Promise((resolve, reject) => {
@@ -242,6 +303,7 @@ export const initWorker = async <C extends AnyClass>(
     value: async (): Promise<void> => {
       if (finalized) return;
       finalized = true;
+      status = WorkerStatus.Finalized;
       rejectAll(new Error('Worker has been finalized'));
       try {
         worker.postMessage({ type: 'finalize' } satisfies WorkerInvokeMessage);
@@ -252,6 +314,13 @@ export const initWorker = async <C extends AnyClass>(
     },
   });
 
+  Object.defineProperty(instance, 'workerStatus', {
+    configurable: true,
+    enumerable: false,
+    writable: false,
+    value: (): WorkerStatus => status,
+  });
+
   await readyPromise;
-  return instance as InstanceType<C> & { finalize: () => Promise<void> };
+  return instance as WorkerInstance<InstanceType<C>>;
 };
