@@ -189,6 +189,13 @@ class MonitoredWorker {
   handleOnline() {
     console.log('Worker is online');
   }
+
+  // One method can handle multiple events
+  @OnWorkerEvent('online')
+  @OnWorkerEvent('exit')
+  handleMultipleEvents(arg?: unknown) {
+    console.log('Worker online or exited');
+  }
 }
 
 const worker = await initWorker(MonitoredWorker);
@@ -198,10 +205,11 @@ const worker = await initWorker(MonitoredWorker);
 Available decorators:
 - `@OnWorkerEvent(event: WorkerEventName)` - Handle any worker event (e.g., 'online', 'message', 'messageerror')
   - `WorkerEventName` is typed to match `Worker.on()` events for type safety
+  - Can be stacked on the same method to handle multiple events
 - `@OnWorkerError()` - Shorthand for `@OnWorkerEvent('error')`
 - `@OnWorkerExit()` - Shorthand for `@OnWorkerEvent('exit')`
 
-Event handlers run on the main thread and can access the main-thread instance state. Multiple handlers can be registered for the same event. If a handler throws an error, it will be logged but won't affect other handlers or worker operation.
+Event handlers run on the main thread and can access the main-thread instance state. Multiple handlers can be registered for the same event, and one method can handle multiple events. If a handler throws an error, it will be logged but won't affect other handlers or worker operation.
 
 ## API
 
@@ -218,6 +226,7 @@ Event handlers run on the main thread and can access the main-thread instance st
   - marks a method to handle worker events on main thread
   - `WorkerEventName` is typed to match `Worker.on()` for type safety
   - supports: 'error', 'exit', 'online', 'message', 'messageerror'
+  - can be stacked on the same method to handle multiple events
 - `OnWorkerError()`
   - shorthand for `@OnWorkerEvent('error')`
 - `OnWorkerExit()`

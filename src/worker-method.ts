@@ -7,7 +7,7 @@ export const WorkerCallback = (): MethodDecorator =>
   Metadata.set('workerCallback', true, 'workerCallbackKeys');
 
 export const OnWorkerEvent = (event: WorkerEventName): MethodDecorator =>
-  Metadata.set('workerEvent', event, 'workerEventKeys');
+  Metadata.appendUnique('workerEvent', event, 'workerEventKeys');
 
 export const OnWorkerExit = (): MethodDecorator => OnWorkerEvent('exit');
 
@@ -27,8 +27,8 @@ export const getWorkerEventHandlers = (target: any): Map<string, string[]> => {
   const map = new Map<string, string[]>();
   const keys = reflector.getArray('workerEventKeys', target);
   for (const key of keys) {
-    const event = reflector.get('workerEvent', target, key);
-    if (event) {
+    const events = reflector.getArray('workerEvent', target, key);
+    for (const event of events) {
       const handlers = map.get(event) ?? [];
       handlers.push(key);
       map.set(event, handlers);

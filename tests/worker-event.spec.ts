@@ -2,6 +2,7 @@ import { initWorker } from '..';
 import { EventWorker } from './fixtures/event.worker.js';
 import { MultiHandlerWorker } from './fixtures/multi-handler.worker.js';
 import { ErrorHandlerWorker } from './fixtures/error-handler.worker.js';
+import { MultiEventHandlerWorker } from './fixtures/multi-event-handler.worker.js';
 
 describe('worker events', () => {
   it('should call @OnWorkerExit handler when worker exits', async () => {
@@ -58,6 +59,22 @@ describe('worker events', () => {
     
     // Both handlers should be called even if one throws
     expect(worker.errorCount).toBe(2);
+    
+    await worker.finalize();
+  });
+
+  it('should support one method handling multiple events', async () => {
+    const worker = await initWorker(MultiEventHandlerWorker);
+    
+    // Wait for online event
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    
+    // Should have both multi-handler and online-only called for online event
+    expect(worker.events).toContain('multi-handler');
+    expect(worker.events).toContain('online-only');
+    
+    const initialCount = worker.events.filter((e) => e === 'multi-handler').length;
+    expect(initialCount).toBe(1);
     
     await worker.finalize();
   });
