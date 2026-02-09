@@ -123,7 +123,9 @@ console.log(value); // -> 5
 
 Use this when worker-side logic needs to call back into main-thread state or services.
 
-## `typed-struct` Shared Memory
+## Shared Memory with `typed-struct`
+
+### Worker Class Shared Memory
 
 If a worker class inherits from a compiled `typed-struct` class, `yuzuthread` automatically:
 
@@ -153,6 +155,197 @@ await instance.setValue(0x7f);
 console.log(instance.value); // -> 0x7f
 await instance.finalize();
 ```
+
+### Shared Constructor Parameters with `@Shared`
+
+Use `@Shared()` to mark constructor parameters that should use shared memory:
+
+```ts
+import { Struct } from 'typed-struct';
+import { DefineWorker, WorkerMethod, Shared, initWorker } from 'yuzuthread';
+
+const SharedDataBase = new Struct('SharedData')
+  .UInt32LE('counter')
+  .compile();
+
+class SharedData extends SharedDataBase {
+  declare counter: number;
+}
+
+@DefineWorker()
+class SharedParamWorker {
+  constructor(
+    @Shared(() => SharedData) public data: SharedData,
+  ) {}
+
+  @WorkerMethod()
+  increment() {
+    this.data.counter++;
+    return this.data.counter;
+  }
+}
+
+const data = new SharedData();
+data.counter = 100;
+
+const worker = await initWorker(SharedParamWorker, [data]);
+
+// Main thread and worker share the same memory
+await worker.increment();
+console.log(worker.data.counter); // -> 101 (updated by worker)
+
+data.counter = 200;
+console.log(await worker.increment()); // -> 201 (sees main thread's change)
+
+await worker.finalize();
+```
+
+**How it works:**
+- Parameters marked with `@Shared()` are converted to use `SharedArrayBuffer` during worker initialization
+- The factory function `() => Type` is optional - if omitted, type is inferred from `design:paramtypes`
+- The library calculates total memory needed (including worker class itself if typed-struct)
+- Both main thread and worker thread share the same underlying memory
+- Works with `Buffer`, `SharedArrayBuffer`, `typed-struct` classes, and user classes containing these
+
+**Requirements:**
+- The parameter type must contain shared memory segments (`typed-struct`, `Buffer`, or `SharedArrayBuffer`)
+- If the type has no shared memory segments, an error is thrown
+- Can be combined with worker class shared memory (worker class itself is typed-struct)
+
+**Multiple shared parameters:**
+
+```ts
+@DefineWorker()
+class MultiSharedWorker {
+  constructor(
+    @Shared(() => SharedData) public data1: SharedData,
+    @Shared(() => SharedData) public data2: SharedData,
+    @Shared(() => Buffer) public buffer: Buffer,
+  ) {}
+
+  @WorkerMethod()
+  updateAll() {
+    this.data1.counter++;
+    this.data2.counter--;
+    this.buffer[0] = 0xff;
+  }
+}
+
+const data1 = new SharedData();
+const data2 = new SharedData();
+const buffer = Buffer.alloc(10);
+
+const worker = await initWorker(MultiSharedWorker, [data1, data2, buffer]);
+await worker.updateAll();
+
+// All parameters are shared
+console.log(data1.counter); // updated by worker
+console.log(data2.counter); // updated by worker
+console.log(buffer[0]); // -> 0xff
+```
+
+### Manual Shared Memory Conversion with `toShared()`
+
+`toShared()` converts objects to use shared memory. **Important:** The object must contain shared memory segments to be converted:
+- The class itself is a `typed-struct` class, OR
+- The object has `Buffer` or `SharedArrayBuffer` fields, OR  
+- The object has fields (marked with `@TransportType()`) that are `typed-struct` classes
+
+```ts
+import { Struct } from 'typed-struct';
+import { toShared, TransportType } from 'yuzuthread';
+
+// Example 1: typed-struct class
+const SharedDataBase = new Struct('SharedData')
+  .UInt32LE('counter')
+  .compile();
+
+class SharedData extends SharedDataBase {
+  declare counter: number;
+}
+
+const data = new SharedData();
+data.counter = 42;
+
+const sharedData = toShared(data);
+// sharedData is a NEW instance using SharedArrayBuffer
+console.log(sharedData.counter); // -> 42
+
+// Example 2: Buffer
+const buffer = Buffer.from('hello');
+const sharedBuffer = toShared(buffer);
+// sharedBuffer is a NEW Buffer backed by SharedArrayBuffer
+console.log(sharedBuffer.toString()); // -> 'hello'
+
+// Example 3: User class with typed-struct field
+class Container {
+  @TransportType(() => SharedData)
+  data!: SharedData;
+  
+  label: string = '';
+}
+
+const container = new Container();
+container.data = new SharedData();
+container.data.counter = 100;
+container.label = 'test';
+
+toShared(container); // Converts container.data in-place
+// container.data is now a different instance using SharedArrayBuffer
+console.log(container.data.counter); // -> 100
+console.log(container.label); // -> 'test' (unchanged)
+
+// Example 4: User class with Buffer field
+class BufferContainer {
+  @TransportType(() => Buffer)
+  buffer!: Buffer;
+}
+
+const bufferContainer = new BufferContainer();
+bufferContainer.buffer = Buffer.from('data');
+
+toShared(bufferContainer); // Converts bufferContainer.buffer in-place
+// bufferContainer.buffer is now backed by SharedArrayBuffer
+
+// Example 5: Complex nested structure
+class NestedContainer {
+  @TransportType(() => Container)
+  container!: Container;
+  
+  @TransportType(() => Buffer)
+  buffer!: Buffer;
+}
+
+const nested = new NestedContainer();
+nested.container = new Container();
+nested.container.data = new SharedData();
+nested.container.data.counter = 200;
+nested.buffer = Buffer.from('nested');
+
+toShared(nested);
+// Both nested.container.data and nested.buffer are now shared
+console.log(nested.container.data.counter); // -> 200
+```
+
+**How `toShared()` works:**
+- **Buffer** → Creates a `SharedArrayBuffer` copy, returns new `Buffer` instance
+- **SharedArrayBuffer** → Returns as-is (already shared)
+- **typed-struct classes** → Creates new instance with `SharedArrayBuffer`
+- **User classes** → Recursively converts fields marked with `@TransportType()` **in-place**
+- **Arrays** → Converts each element in-place
+- Built-in types (Date, RegExp, etc.) → Not supported, returns as-is
+
+**Field conversion rules:**
+- Only converts fields with `@TransportType()` decorator
+- Or fields with `design:type` metadata (when `emitDecoratorMetadata` is enabled)
+- Skips fields with manual encoders (`@TransportEncoder()`)
+- Skips built-in types
+
+**Important notes:**
+- For `typed-struct` classes and `Buffer`, `toShared()` returns a **new instance** (cannot modify in-place)
+- For user classes, `toShared()` modifies fields **in-place** (the object itself is the same, but its fields may be replaced)
+- The object must contain at least one shared memory segment, otherwise it's returned unchanged
+- Use `@TransportType()` to mark fields that should be recursively converted
 
 ## Custom Class Transport
 
@@ -538,27 +731,53 @@ Event handlers run on the main thread and can access the main-thread instance st
   - supports async operations
   - works as `PropertyDecorator`, `MethodDecorator`, and `ParameterDecorator`
 
+#### Shared Memory
+
+- `Shared(factory?: () => Type)`
+  - marks constructor parameter to use shared memory
+  - factory function `() => Type` is optional (inferred from `design:paramtypes` if omitted)
+  - parameter type must contain shared memory segments (`typed-struct`, `Buffer`, `SharedArrayBuffer`)
+  - throws error if type has no shared memory segments
+  - works as `ParameterDecorator` (constructor parameters only)
+  - automatically converts parameter to use `SharedArrayBuffer` during worker initialization
+  - both main thread and worker thread share the same memory
+
 ### Functions
 
 - `initWorker(cls, ...args)`
   - creates a persistent worker and returns instance with `finalize(): Promise<void>` and `workerStatus(): WorkerStatus`
+  - automatically handles `@Shared` constructor parameters
+  - preserves prototype chain for custom class constructor parameters
 - `runInWorker(cls, cb, ...args)`
   - one-time worker execution with automatic finalize
+  - same constructor parameter handling as `initWorker`
+- `toShared(obj)`
+  - converts object to use shared memory
+  - returns new instance for `typed-struct` classes
+  - modifies in-place for user classes (updates fields)
+  - creates `SharedArrayBuffer` copy for `Buffer`
+  - returns as-is for `SharedArrayBuffer`
+  - recursively processes fields with `@TransportType()` or `design:type` metadata
 
 ### Types
 
 - `WorkerStatus`
   - enum for worker status states
+  - values: `Initializing`, `Ready`, `InitError`, `WorkerError`, `Exited`, `Finalized`
 - `WorkerInstance<T>`
   - type for worker instance with `finalize()` and `workerStatus()` methods
 - `WorkerEventName`
   - type for worker event names, matches `Worker.on()` event parameter
+  - includes: `'error'`, `'exit'`, `'online'`, `'message'`, `'messageerror'`
 - `Awaitable<T>`
   - type for value that can be sync or async: `T | Promise<T>`
 - `TransportTypeFactory`
   - type for transport type factory: `() => Class | [Class]`
 - `TransportEncoderType<T, U>`
   - type for custom encoder/decoder object
+- `SharedTypeFactory`
+  - type for shared type factory: `() => Class`
+  - used with `@Shared()` decorator
 
 ## Notes
 
@@ -568,3 +787,122 @@ Event handlers run on the main thread and can access the main-thread instance st
 - For `@TransportType()` to automatically infer types from TypeScript metadata, enable `emitDecoratorMetadata` in `tsconfig.json`.
 - Transport decorators work with both `@WorkerMethod()` and `@WorkerCallback()`.
 - Custom class transport preserves the prototype chain and method definitions.
+
+### Constructor Parameter Transport
+
+Constructor parameters passed to `initWorker()` are automatically transported with prototype preservation:
+
+```ts
+class Config {
+  @TransportType(() => Date)
+  createdAt: Date;
+
+  constructor(public name: string) {
+    this.createdAt = new Date();
+  }
+}
+
+@DefineWorker()
+class ConfigWorker {
+  constructor(
+    public config: Config,  // No decorator needed if emitDecoratorMetadata is enabled
+  ) {}
+
+  @WorkerMethod()
+  getConfigName() {
+    return this.config.name.toUpperCase();
+  }
+}
+
+const config = new Config('app');
+const worker = await initWorker(ConfigWorker, [config]);
+
+// config methods are preserved in worker
+const name = await worker.getConfigName();
+console.log(name); // -> "APP"
+```
+
+- Constructor parameters with custom classes are automatically transported
+- Prototype chain is preserved using `@TransportType()` or `design:paramtypes` metadata
+- Works the same way as method parameters and return values
+- `@Shared` parameters are converted first, then transported
+
+### Circular Reference Detection
+
+The library detects and prevents circular references in both transport and shared memory:
+
+**Transport:**
+```ts
+class Node {
+  @TransportType(() => Node)
+  next?: Node;
+}
+
+const node1 = new Node();
+const node2 = new Node();
+node1.next = node2;
+node2.next = node1; // Circular reference
+
+await worker.processNode(node1); // Throws: "Circular reference detected"
+```
+
+**Shared memory:**
+```ts
+class CircularContainer {
+  @TransportType(() => SharedData)
+  data!: SharedData;
+}
+
+const container: any = new Container();
+container.data = new SharedData();
+container.self = container; // Circular reference
+
+toShared(container); // Throws: "Circular reference detected"
+```
+
+Circular references in type hierarchies are also detected:
+```ts
+class CircularA {
+  @TransportType(() => CircularB)
+  b?: CircularB;
+}
+
+class CircularB {
+  @TransportType(() => CircularA)
+  a?: CircularA;
+}
+
+// Throws when scanning metadata or attempting to transport
+```
+
+### SharedArrayBuffer Support
+
+`SharedArrayBuffer` is automatically detected and handled in transport:
+
+```ts
+@DefineWorker()
+class SharedBufferWorker {
+  @WorkerMethod()
+  incrementBuffer(
+    @TransportType(() => Buffer) buffer: Buffer,
+  ) {
+    buffer[0]++;
+    return buffer[0];
+  }
+}
+
+const sab = new SharedArrayBuffer(10);
+const buffer = Buffer.from(sab);
+buffer[0] = 100;
+
+const worker = await initWorker(SharedBufferWorker);
+
+// Buffer backed by SharedArrayBuffer is shared
+await worker.incrementBuffer(buffer);
+console.log(buffer[0]); // -> 101 (updated by worker)
+```
+
+- `Buffer` backed by `SharedArrayBuffer` is automatically detected
+- No copy is made - the same memory is shared
+- Works with both `@TransportType()` and `@Shared()`
+- `SharedArrayBuffer` can be passed directly as a parameter type
