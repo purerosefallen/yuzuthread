@@ -8,6 +8,7 @@ import {
 } from './transport-metadata';
 import { findTypedStructClass } from './find-typed-struct-cls';
 import { AnyStructConstructor } from './types';
+import { mutateTypedStructProto } from './mutate-typed-struct-proto';
 
 type TransportContext = {
   path: string[];
@@ -130,11 +131,35 @@ export const encodeValue = async (
     );
   }
 
-  // Handle Buffer
+  // Handle Buffer -> encode with SharedArrayBuffer support
   if (Buffer.isBuffer(value)) {
+    // Check if the buffer is backed by SharedArrayBuffer
+    const isSharedBuffer = value.buffer instanceof SharedArrayBuffer ||
+                           value.buffer?.constructor?.name === 'SharedArrayBuffer';
+    
+    if (isSharedBuffer) {
+      return {
+        __type: 'Buffer',
+        data: value.buffer, // Pass SharedArrayBuffer directly
+        byteOffset: value.byteOffset,
+        byteLength: value.byteLength,
+        isShared: true,
+      };
+    } else {
+      return {
+        __type: 'Buffer',
+        data: new Uint8Array(value),
+        isShared: false,
+      };
+    }
+  }
+
+  // Handle SharedArrayBuffer -> pass directly
+  if (value instanceof SharedArrayBuffer || 
+      value?.constructor?.name === 'SharedArrayBuffer') {
     return {
-      __type: 'Buffer',
-      data: new Uint8Array(value),
+      __type: 'SharedArrayBuffer',
+      data: value,
     };
   }
 
@@ -154,12 +179,28 @@ export const encodeValue = async (
         __type: 'TypedStructClass',
         __className: targetClass.name,
         structBuffer: null,
+        isShared: false,
         data: {},
       };
 
       // Dump the struct buffer using the static raw method
       const buffer = structInfo.structCls.raw(value) as Buffer;
-      encoded.structBuffer = new Uint8Array(buffer);
+      
+      // Check if the buffer is backed by SharedArrayBuffer
+      if (buffer && buffer.buffer instanceof SharedArrayBuffer) {
+        // For SharedArrayBuffer, pass the SharedArrayBuffer directly
+        // postMessage will transfer the reference, not copy it
+        encoded.structBuffer = buffer.buffer;
+        encoded.isShared = true;
+        encoded.byteOffset = buffer.byteOffset;
+        encoded.byteLength = buffer.byteLength;
+        // console.log(`[Encode] SharedArrayBuffer detected for ${targetClass.name}`);
+      } else {
+        // For regular Buffer, copy to Uint8Array
+        encoded.structBuffer = new Uint8Array(buffer);
+        encoded.isShared = false;
+        // console.log(`[Encode] Regular buffer for ${targetClass.name}`);
+      }
 
       // Encode non-struct fields
       const proto = targetClass.prototype;
@@ -261,7 +302,27 @@ export const decodeValue = async (
   // Handle special encoded types
   if (typeof encoded === 'object' && encoded.__type) {
     if (encoded.__type === 'Buffer') {
-      return Buffer.from(encoded.data as Uint8Array);
+      // Check if it's backed by SharedArrayBuffer
+      const isSharedBuffer = encoded.isShared && 
+        (encoded.data instanceof SharedArrayBuffer || 
+         encoded.data?.constructor?.name === 'SharedArrayBuffer');
+      
+      if (isSharedBuffer) {
+        // Create Buffer view from SharedArrayBuffer without copying
+        return Buffer.from(
+          encoded.data,
+          encoded.byteOffset || 0,
+          encoded.byteLength || encoded.data.byteLength
+        );
+      } else {
+        // Regular Buffer
+        return Buffer.from(encoded.data as Uint8Array);
+      }
+    }
+
+    if (encoded.__type === 'SharedArrayBuffer') {
+      // Return the SharedArrayBuffer directly
+      return encoded.data;
     }
 
     if (encoded.__type === 'TypedStructClass' && targetClass) {
@@ -270,9 +331,43 @@ export const decodeValue = async (
         throw new Error(`${context.path.join('.')}: Class is marked as TypedStructClass but is not a typed-struct class`);
       }
 
-      // Create instance with struct buffer
-      const buffer = encoded.structBuffer ? Buffer.from(encoded.structBuffer) : undefined;
-      const instance = new (targetClass as any)(buffer);
+      // Prepare buffer and clone flag
+      let buffer: Buffer | undefined;
+      let clone = true; // Default: clone for regular buffers
+      
+      if (encoded.structBuffer) {
+        // Check for SharedArrayBuffer using multiple methods (instanceof can fail across realms)
+        const isSharedBuffer = encoded.isShared && 
+          (encoded.structBuffer instanceof SharedArrayBuffer || 
+           encoded.structBuffer?.constructor?.name === 'SharedArrayBuffer' ||
+           Object.prototype.toString.call(encoded.structBuffer) === '[object SharedArrayBuffer]');
+        
+        if (isSharedBuffer) {
+          // For SharedArrayBuffer, create Buffer view directly
+          buffer = Buffer.from(
+            encoded.structBuffer,
+            encoded.byteOffset || 0,
+            encoded.byteLength || encoded.structBuffer.byteLength
+          );
+          clone = false; // Don't clone SharedArrayBuffer
+        } else {
+          // For regular buffer, create new Buffer
+          buffer = Buffer.from(encoded.structBuffer);
+          clone = true; // Clone regular buffers
+        }
+      }
+      
+      // Use mutateTypedStructProto to handle potential constructor modifications
+      // The callback should only execute once, then return undefined
+      let executed = false;
+      mutateTypedStructProto(targetClass, () => {
+        if (executed) return undefined;
+        executed = true;
+        return [buffer, clone];
+      });
+
+      // Create instance - mutateTypedStructProto will intercept and use our buffer/clone
+      const instance = new (targetClass as any)();
 
       // Decode and set non-struct fields
       const proto = targetClass.prototype;
