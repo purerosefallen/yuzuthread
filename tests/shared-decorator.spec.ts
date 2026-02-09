@@ -7,6 +7,8 @@ import {
 } from '../src/utility/shared-decorator';
 import { TransportType } from '../src/utility/transport-metadata';
 
+const NoopPropertyDecorator = (): PropertyDecorator => () => {};
+
 const Base = new Struct('SharedDecoratorBase').UInt32LE('value').compile();
 
 class SharedStruct extends Base {
@@ -34,6 +36,16 @@ class NestedSharedContainer {
 class NoSharedMemory {
   value: number = 0;
   name: string = '';
+}
+
+class DesignTypeOnlyBufferContainer {
+  @NoopPropertyDecorator()
+  buffer: Buffer = Buffer.alloc(0);
+}
+
+class TransporterOverridesDesignTypeContainer {
+  @TransportType(() => Date)
+  buffer: Buffer = Buffer.alloc(0);
 }
 
 describe('Shared decorator utilities', () => {
@@ -135,6 +147,22 @@ describe('Shared decorator utilities', () => {
 
     it('should return 0 for objects without shared memory', () => {
       const obj = new NoSharedMemory();
+      const size = calculateSharedMemorySize(obj);
+      expect(size).toBe(0);
+    });
+
+    it('should calculate size from design:type metadata when transporter metadata is absent', () => {
+      const obj = new DesignTypeOnlyBufferContainer();
+      obj.buffer = Buffer.alloc(12);
+
+      const size = calculateSharedMemorySize(obj);
+      expect(size).toBe(12);
+    });
+
+    it('should strictly follow transporter metadata when transporter exists', () => {
+      const obj = new TransporterOverridesDesignTypeContainer();
+      obj.buffer = Buffer.alloc(12);
+
       const size = calculateSharedMemorySize(obj);
       expect(size).toBe(0);
     });

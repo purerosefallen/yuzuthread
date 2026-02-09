@@ -5,6 +5,7 @@ import {
   transportReflector,
   getPropertyTransporter,
 } from './transport-metadata';
+import { shouldProcessSharedField } from './shared-field-rule';
 
 /**
  * Factory function for Shared decorator type
@@ -206,6 +207,28 @@ export const calculateSharedMemorySize = (
   obj: any,
   visited = new WeakSet<object>(),
 ): number => {
+  const calculateClassFieldSharedSize = (
+    target: Record<string, any>,
+    proto: any,
+    shouldSkipField?: (key: string) => boolean,
+  ): number => {
+    let total = 0;
+
+    for (const key of Object.keys(target)) {
+      if (shouldSkipField?.(key)) {
+        continue;
+      }
+
+      if (!shouldProcessSharedField(proto, key)) {
+        continue;
+      }
+
+      total += calculateSharedMemorySize(target[key], visited);
+    }
+
+    return total;
+  };
+
   // Handle null and undefined
   if (obj === null || obj === undefined) {
     return 0;
@@ -282,54 +305,16 @@ export const calculateSharedMemorySize = (
     }
 
     let total = rawBuffer.length;
-
-    // Add sizes of non-struct fields
-    const proto = ctor.prototype;
-    for (const key of Object.keys(obj)) {
-      if (structInfo.fields.has(key)) {
-        continue; // Skip struct fields
-      }
-
-      const fieldValue = obj[key];
-
-      // Check for TransportType metadata or design:type
-      const propTransporter = getPropertyTransporter(proto, key);
-      const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
-
-      // Only calculate if there's explicit metadata
-      if (
-        propTransporter?.type === 'class' ||
-        (propDesignType && !isBuiltinType(propDesignType))
-      ) {
-        total += calculateSharedMemorySize(fieldValue, visited);
-      }
-    }
+    total += calculateClassFieldSharedSize(obj, ctor.prototype, (key) =>
+      structInfo.fields.has(key),
+    );
 
     return total;
   }
 
   // Handle user classes
   if (ctor && ctor !== Object) {
-    let total = 0;
-    const proto = ctor.prototype;
-
-    for (const key of Object.keys(obj)) {
-      const fieldValue = obj[key];
-
-      // Check for TransportType metadata or design:type
-      const propTransporter = getPropertyTransporter(proto, key);
-      const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
-
-      // Only calculate if there's explicit metadata
-      if (
-        propTransporter?.type === 'class' ||
-        (propDesignType && !isBuiltinType(propDesignType))
-      ) {
-        total += calculateSharedMemorySize(fieldValue, visited);
-      }
-    }
-
-    return total;
+    return calculateClassFieldSharedSize(obj, ctor.prototype);
   }
 
   // Plain objects

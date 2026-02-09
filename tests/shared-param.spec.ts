@@ -1,4 +1,4 @@
-import { initWorker, DefineWorker, WorkerMethod, Shared } from '..';
+import { initWorker, DefineWorker, WorkerMethod, Shared, toShared } from '..';
 import {
   SingleSharedWorker,
   MultiSharedWorker,
@@ -77,6 +77,27 @@ describe('@Shared parameter decorator', () => {
       // We can verify by checking that modifications are reflected in worker methods
       const initialValues = await worker.getValues();
       expect(initialValues.counter).toBe(50);
+
+      await worker.finalize();
+    });
+
+    it('should silently skip allocation when @Shared argument is already shared', async () => {
+      const data = new SharedData();
+      data.counter = 30;
+      data.flag = 3;
+
+      const sharedData = toShared(data);
+      const rawBefore = SharedData.raw(sharedData) as Buffer;
+      expect(rawBefore.buffer.constructor.name).toBe('SharedArrayBuffer');
+
+      const worker = await initWorker(SingleSharedWorker, sharedData);
+
+      const counter = await worker.incrementCounter();
+      expect(counter).toBe(31);
+      expect(sharedData.counter).toBe(31);
+
+      const rawAfter = SharedData.raw(sharedData) as Buffer;
+      expect(rawAfter.buffer).toBe(rawBefore.buffer);
 
       await worker.finalize();
     });

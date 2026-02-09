@@ -2,6 +2,8 @@ import { Struct } from 'typed-struct';
 import { toShared } from '../src/to-shared';
 import { TransportType } from '..';
 
+const NoopPropertyDecorator = (): PropertyDecorator => () => {};
+
 describe('toShared', () => {
   describe('Buffer handling', () => {
     it('should convert regular Buffer to SharedArrayBuffer-backed Buffer', () => {
@@ -136,6 +138,38 @@ describe('toShared', () => {
       expect(result).toBe(obj1);
       expect(result.ref).toBe(obj2);
       expect(result.ref!.ref).toBe(obj1);
+    });
+
+    it('should convert fields with design:type metadata even without transporter metadata', () => {
+      class DesignTypeOnlyClass {
+        @NoopPropertyDecorator()
+        buffer?: Buffer;
+      }
+
+      const obj = new DesignTypeOnlyClass();
+      obj.buffer = Buffer.from([9, 8, 7]);
+
+      const result = toShared(obj);
+
+      expect(result.buffer).toBeInstanceOf(Buffer);
+      expect(result.buffer!.buffer.constructor.name).toBe('SharedArrayBuffer');
+      expect(Array.from(result.buffer!)).toEqual([9, 8, 7]);
+    });
+
+    it('should strictly follow transporter metadata when transporter exists', () => {
+      class TransporterOverridesDesignTypeClass {
+        @TransportType(() => Date)
+        buffer?: Buffer;
+      }
+
+      const obj = new TransporterOverridesDesignTypeClass();
+      const original = Buffer.from([1, 2, 3]);
+      obj.buffer = original;
+
+      const result = toShared(obj);
+
+      expect(result.buffer).toBe(original);
+      expect(result.buffer!.buffer.constructor.name).toBe('ArrayBuffer');
     });
   });
 

@@ -118,9 +118,8 @@ export const initWorker = async <C extends AnyClass>(
       const memorySize = calculateSharedMemorySize(arg);
 
       if (memorySize === 0) {
-        throw new TypeError(
-          `@Shared parameter at index ${index} has no shared memory segments`,
-        );
+        // Nothing to allocate (already shared or no runtime shared values), keep original argument.
+        continue;
       }
 
       // Allocate SharedArrayBuffer for this parameter

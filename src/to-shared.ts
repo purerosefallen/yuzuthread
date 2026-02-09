@@ -1,10 +1,9 @@
 import { createTypedStructInstance } from './utility/typed-struct-registry';
-import { getPropertyTransporter } from './utility/transport-metadata';
+import { shouldProcessSharedField } from './utility/shared-field-rule';
 import {
   BUILTIN_TYPES,
   TYPED_ARRAYS,
   getTypedStructInfo,
-  isBuiltinType,
 } from './utility/type-helpers';
 
 /**
@@ -19,43 +18,20 @@ import {
  * - Buffer: Creates a SharedArrayBuffer copy
  * - SharedArrayBuffer: Returns as-is
  * - Built-in types: Returns as-is (not supported)
- * - typed-struct classes: Creates new instance with SharedArrayBuffer, converts non-struct fields with @TransportType
- * - User classes: Recursively converts fields with @TransportType in-place (with circular reference protection)
+ * - typed-struct classes: Creates new instance with SharedArrayBuffer, converts non-struct fields by transporter/design:type rules
+ * - User classes: Recursively converts fields by transporter/design:type rules in-place (with circular reference protection)
  * - Arrays: Converts each element in-place
  *
  * Field conversion rules:
- * - Only fields with @TransportType decorator are converted
- * - @TransportType with encoder mode is not converted (manual encoding)
- * - @TransportType with built-in types is not converted
- * - Fields without @TransportType are copied as-is
+ * - If @TransportType metadata exists, it is used as the single source of truth
+ * - @TransportType encoder mode is not converted (manual encoding)
+ * - If no @TransportType metadata exists, design:type is used as fallback
  */
 export const toShared = <T>(
   inst: T,
   options?: { useExistingSharedArrayBuffer?: SharedArrayBuffer },
 ): T => {
   const visited = new WeakSet<object>();
-
-  /**
-   * Check if a transporter should trigger field conversion
-   * Returns true only if it's a class type with non-builtin class
-   */
-  const shouldConvertWithTransporter = (transporter: any): boolean => {
-    if (!transporter) return false;
-
-    // Encoder type should not trigger conversion (manual encoding)
-    if (transporter.type === 'encoder') return false;
-
-    // Class type: check if the class is not built-in
-    if (transporter.type === 'class') {
-      const factoryResult = transporter.factory();
-      const targetClass = Array.isArray(factoryResult)
-        ? factoryResult[0]
-        : factoryResult;
-      return !isBuiltinType(targetClass);
-    }
-
-    return false;
-  };
 
   const convert = (value: any): any => {
     // Handle null and undefined
@@ -169,16 +145,10 @@ export const toShared = <T>(
 
         const fieldValue = value[key];
 
-        // Check for TransportType metadata
-        const propTransporter = getPropertyTransporter(proto, key);
-
-        // Only convert if TransportType is present and:
-        // - It's a class type (not encoder)
-        // - The class is not a built-in type
-        if (shouldConvertWithTransporter(propTransporter)) {
+        if (shouldProcessSharedField(proto, key)) {
           (newInstance as any)[key] = convert(fieldValue);
         } else {
-          // No TransportType or encoder/builtin type, copy as-is
+          // No shared conversion needed, copy as-is
           (newInstance as any)[key] = fieldValue;
         }
       }
@@ -196,13 +166,7 @@ export const toShared = <T>(
       for (const key of Object.keys(value)) {
         const fieldValue = value[key];
 
-        // Check for TransportType metadata
-        const propTransporter = getPropertyTransporter(proto, key);
-
-        // Only convert if TransportType is present and:
-        // - It's a class type (not encoder)
-        // - The class is not a built-in type
-        if (shouldConvertWithTransporter(propTransporter)) {
+        if (shouldProcessSharedField(proto, key)) {
           value[key] = convert(fieldValue);
         }
         // Otherwise, leave the field as-is
