@@ -104,6 +104,22 @@ export const toShared = <T>(
       // Get the raw buffer
       const rawBuffer = structInfo.structCls.raw(value) as Buffer;
 
+      if (
+        rawBuffer.buffer instanceof SharedArrayBuffer ||
+        rawBuffer.buffer.constructor?.name === 'SharedArrayBuffer'
+      ) {
+        // it's already shared, so we only check fields and go
+        const proto = ctor.prototype;
+        for (const key of Object.keys(value)) {
+          const fieldValue = value[key];
+
+          if (shouldProcessSharedField(proto, key)) {
+            value[key] = convert(fieldValue);
+          }
+        }
+        return value;
+      }
+
       // Use existing SharedArrayBuffer or create a new one
       let sharedBuffer: Buffer;
       if (options?.useExistingSharedArrayBuffer) {

@@ -15,9 +15,7 @@ import {
   safeScanTypedStructClass,
 } from './utility/typed-struct-registry';
 import { getSharedParams } from './utility/shared-decorator';
-import { toShared } from './to-shared';
 import { decodeCtorArgs } from './utility/transport';
-import { getTypedStructInfo } from './utility/type-helpers';
 
 type SerializedError = {
   message: string;
@@ -93,12 +91,6 @@ export type WorkerDataPayload = {
   typedStruct: {
     sharedBuffer: SharedArrayBuffer;
   } | null;
-  sharedParams:
-    | {
-        index: number;
-        sharedBuffer: SharedArrayBuffer;
-      }[]
-    | null;
 };
 
 export type WorkerTypedStructRegistration = {
@@ -237,75 +229,18 @@ const setupWorkerRuntime = async (
 ): Promise<void> => {
   if (!parentPort) throw new Error('Worker parentPort is not available');
 
-  // Identify which parameters are @Shared
-  const sharedParams = getSharedParams(cls);
-  const sharedParamIndices = new Set(Array.from(sharedParams.keys()));
-
   // Decode constructor arguments to restore prototypes
   // For @Shared parameters, we'll replace them later from SharedArrayBuffer
   const decodedArgs = await decodeCtorArgs(cls, data.ctorArgs);
-
-  // Process @Shared parameters
-  const processedArgs = [...decodedArgs];
-  if (data.sharedParams) {
-    const paramTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
-
-    for (const sharedParamData of data.sharedParams) {
-      const { index, sharedBuffer } = sharedParamData;
-      const paramInfo = sharedParams.get(index);
-
-      if (!paramInfo) {
-        throw new Error(
-          `@Shared parameter at index ${index} not found in worker class`,
-        );
-      }
-
-      // Get the parameter type
-      const paramType = paramInfo.factory
-        ? paramInfo.factory()
-        : paramTypes[index];
-
-      if (!paramType) {
-        throw new TypeError(
-          `Cannot determine type for @Shared parameter at index ${index}`,
-        );
-      }
-
-      // Check if parameter type is a typed-struct
-      const structInfo = getTypedStructInfo(paramType);
-
-      let sharedArg: any;
-      if (structInfo) {
-        // For typed-struct, directly create instance from sharedBuffer
-        const buffer = Buffer.from(sharedBuffer);
-        sharedArg = createTypedStructInstance(paramType, buffer, false, []);
-      } else {
-        // For non-typed-struct, use toShared with the decoded arg
-        // The decoded arg should have correct prototype now
-        const decodedArg = decodedArgs[index];
-        sharedArg = toShared(decodedArg, {
-          useExistingSharedArrayBuffer: sharedBuffer,
-        });
-      }
-
-      // Update args
-      processedArgs[index] = sharedArg;
-    }
-  }
 
   let instance: any;
   if (data.typedStruct && registration.typedStruct) {
     // Use createTypedStructInstance for typed-struct classes
     const sharedBuffer = Buffer.from(data.typedStruct.sharedBuffer);
-    instance = createTypedStructInstance(
-      cls,
-      sharedBuffer,
-      false,
-      processedArgs,
-    );
+    instance = createTypedStructInstance(cls, sharedBuffer, false, decodedArgs);
   } else {
     // Regular class construction
-    instance = new cls(...processedArgs);
+    instance = new cls(...decodedArgs);
   }
   const workerMethods = new Set(getWorkerMethods(cls.prototype));
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));

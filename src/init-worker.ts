@@ -22,10 +22,7 @@ import {
   decodeMethodArgs,
 } from './utility/transport';
 import { createTypedStructInstance } from './utility/typed-struct-registry';
-import {
-  getSharedParams,
-  calculateSharedMemorySize,
-} from './utility/shared-decorator';
+import { getSharedParams } from './utility/shared-decorator';
 import { toShared } from './to-shared';
 import { encodeCtorArgs } from './utility/transport';
 
@@ -81,7 +78,6 @@ export const initWorker = async <C extends AnyClass>(
   const workerMethods = getWorkerMethods(cls.prototype);
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
   let typedStructPayload: WorkerDataPayload['typedStruct'] = null;
-  let sharedParamsPayload: WorkerDataPayload['sharedParams'] = null;
   const typedStruct = registration.typedStruct;
 
   // Scan for @Shared parameters
@@ -90,8 +86,6 @@ export const initWorker = async <C extends AnyClass>(
 
   // Process @Shared parameters
   if (sharedParams.size > 0) {
-    sharedParamsPayload = [];
-
     // Get parameter types from design:paramtypes
     const paramTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
 
@@ -107,37 +101,11 @@ export const initWorker = async <C extends AnyClass>(
         );
       }
 
-      // Check if the argument value is provided
-      if (arg === undefined || arg === null) {
-        throw new TypeError(
-          `@Shared parameter at index ${index} is required but got ${arg}`,
-        );
-      }
-
-      // Calculate memory size for this parameter
-      const memorySize = calculateSharedMemorySize(arg);
-
-      if (memorySize === 0) {
-        // Nothing to allocate (already shared or no runtime shared values), keep original argument.
-        continue;
-      }
-
-      // Allocate SharedArrayBuffer for this parameter
-      const sharedBuffer = new SharedArrayBuffer(memorySize);
-
       // Convert argument to shared memory
-      const sharedArg = toShared(arg, {
-        useExistingSharedArrayBuffer: sharedBuffer,
-      });
+      const sharedArg = toShared(arg);
 
       // Update processed args for worker construction
       processedArgs[index] = sharedArg;
-
-      // Store SharedArrayBuffer reference for worker
-      sharedParamsPayload.push({
-        index,
-        sharedBuffer,
-      });
     }
   }
 
@@ -198,7 +166,6 @@ export const initWorker = async <C extends AnyClass>(
     classId: registration.id,
     ctorArgs: encodedCtorArgs,
     typedStruct: typedStructPayload,
-    sharedParams: sharedParamsPayload,
     __entryFile: registration.filePath,
   };
   const worker = new Worker(WORKER_BOOTSTRAP, {
