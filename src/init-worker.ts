@@ -15,6 +15,12 @@ import {
   WorkerResultMessage,
 } from './worker';
 import { WorkerStatus } from './utility/types';
+import {
+  encodeMethodArgs,
+  decodeMethodReturn,
+  encodeMethodReturn,
+  decodeMethodArgs,
+} from './utility/transport';
 
 type ErrorLike = {
   message: string;
@@ -122,7 +128,11 @@ export const initWorker = async <C extends AnyClass>(
   let nextCallId = 1;
   const pending = new Map<
     number,
-    { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }
+    {
+      resolve: (value: unknown) => void;
+      reject: (reason?: unknown) => void;
+      method: string;
+    }
   >();
 
   const rejectAll = (error: Error): void => {
@@ -157,8 +167,12 @@ export const initWorker = async <C extends AnyClass>(
         const callback = pending.get(message.id);
         if (!callback) return;
         pending.delete(message.id);
-        if (message.ok) callback.resolve(message.result);
-        else {
+        if (message.ok) {
+          // Decode return value
+          decodeMethodReturn(cls.prototype, callback.method, message.result)
+            .then((decoded) => callback.resolve(decoded))
+            .catch((error) => callback.reject(error));
+        } else {
           const failed = message as Extract<WorkerResultMessage, { ok: false }>;
           callback.reject(
             toError(failed.error, 'Worker method execution failed'),
@@ -196,18 +210,27 @@ export const initWorker = async <C extends AnyClass>(
         }
 
         Promise.resolve()
-          .then(() =>
-            method.apply(
-              instance,
+          .then(async () => {
+            // Decode arguments
+            const decodedArgs = await decodeMethodArgs(
+              cls.prototype,
+              callbackInvoke.method,
               Array.isArray(callbackInvoke.args) ? callbackInvoke.args : [],
-            ),
-          )
-          .then((result: unknown) => {
+            );
+            return method.apply(instance, decodedArgs);
+          })
+          .then(async (result: unknown) => {
+            // Encode return value
+            const encodedResult = await encodeMethodReturn(
+              cls.prototype,
+              callbackInvoke.method,
+              result,
+            );
             worker.postMessage({
               type: 'callback-result',
               id: callbackInvoke.id,
               ok: true,
-              result,
+              result: encodedResult,
             } satisfies WorkerInvokeMessage);
           })
           .catch((error: unknown) => {
@@ -259,23 +282,27 @@ export const initWorker = async <C extends AnyClass>(
     callEventHandlers('messageerror', error);
   });
 
-  const callWorkerMethod = (
+  const callWorkerMethod = async (
     name: string,
     methodArgs: unknown[],
   ): Promise<unknown> => {
     if (finalized)
       return Promise.reject(new Error('Worker has been finalized'));
+    
+    // Encode arguments
+    const encodedArgs = await encodeMethodArgs(cls.prototype, name, methodArgs);
+    
     return readyPromise.then(
       () =>
         new Promise((resolve, reject) => {
           const id = nextCallId;
           nextCallId += 1;
-          pending.set(id, { resolve, reject });
+          pending.set(id, { resolve, reject, method: name });
           const message: WorkerInvokeMessage = {
             type: 'invoke',
             id,
             method: name,
-            args: methodArgs,
+            args: encodedArgs,
           };
           try {
             worker.postMessage(message);

@@ -1,0 +1,154 @@
+import { MetadataSetter, Reflector } from 'typed-reflector';
+import { AnyClass } from 'nfkit';
+
+export type Awaitable<T> = T | Promise<T>;
+
+export type TransportTypeFactory = () => AnyClass | [AnyClass];
+
+export type TransportEncoder<T = any, U = any> = {
+  encode: (obj: T) => Awaitable<U>;
+  decode: (encoded: U) => Awaitable<T>;
+};
+
+export type TransporterInfo = 
+  | { type: 'class'; factory: TransportTypeFactory }
+  | { type: 'encoder'; encoder: TransportEncoder };
+
+export type TransporterData =
+  | { kind: 'return'; info: TransporterInfo }
+  | { kind: 'property'; info: TransporterInfo }
+  | { kind: 'params'; params: Map<number, TransporterInfo> };
+
+export interface TransportMetadataMap {
+  transporter: TransporterData;
+}
+
+export interface TransportMetadataArrayMap {}
+
+export const TransportMetadata = new MetadataSetter<
+  TransportMetadataMap,
+  TransportMetadataArrayMap
+>();
+export const transportReflector = new Reflector<
+  TransportMetadataMap,
+  TransportMetadataArrayMap
+>();
+
+/**
+ * Marks transport type for method return value, parameter, or property.
+ * @param factory Optional factory function that returns the class or [class] for array
+ */
+export const TransportType = (factory?: TransportTypeFactory): PropertyDecorator & MethodDecorator & ParameterDecorator => {
+  if (!factory) {
+    // No metadata registration, only for emitDecoratorMetadata
+    return (() => {}) as any;
+  }
+
+  return ((target: any, propertyKey?: string | symbol, parameterIndexOrDescriptor?: number | PropertyDescriptor) => {
+    if (propertyKey === undefined) {
+      // Class decorator - not supported
+      throw new Error('@TransportType cannot be used as a class decorator');
+    }
+
+    const info: TransporterInfo = { type: 'class', factory };
+
+    if (typeof parameterIndexOrDescriptor === 'number') {
+      // Parameter decorator
+      const paramIndex = parameterIndexOrDescriptor;
+      const existing = transportReflector.get('transporter', target, propertyKey as string);
+      let params: Map<number, TransporterInfo>;
+      
+      if (existing && existing.kind === 'params') {
+        params = existing.params;
+      } else {
+        params = new Map<number, TransporterInfo>();
+      }
+      
+      params.set(paramIndex, info);
+      const data: TransporterData = { kind: 'params', params };
+      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+    } else if (parameterIndexOrDescriptor === undefined) {
+      // Property decorator
+      const data: TransporterData = { kind: 'property', info };
+      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+    } else if (typeof parameterIndexOrDescriptor === 'object') {
+      // Method decorator (return type)
+      const data: TransporterData = { kind: 'return', info };
+      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+    }
+  }) as any;
+};
+
+/**
+ * Custom encoder/decoder for transport.
+ * @param encode Function to encode object
+ * @param decode Function to decode object
+ */
+export const TransportEncoder = <T = any, U = any>(
+  encode: (obj: T) => Awaitable<U>,
+  decode: (encoded: U) => Awaitable<T>,
+): PropertyDecorator & MethodDecorator & ParameterDecorator => {
+  const encoder: TransportEncoder<T, U> = { encode, decode };
+  const info: TransporterInfo = { type: 'encoder', encoder };
+
+  return ((target: any, propertyKey?: string | symbol, parameterIndexOrDescriptor?: number | PropertyDescriptor) => {
+    if (propertyKey === undefined) {
+      throw new Error('@TransportEncoder cannot be used as a class decorator');
+    }
+
+    if (typeof parameterIndexOrDescriptor === 'number') {
+      // Parameter decorator
+      const paramIndex = parameterIndexOrDescriptor;
+      const existing = transportReflector.get('transporter', target, propertyKey as string);
+      let params: Map<number, TransporterInfo>;
+      
+      if (existing && existing.kind === 'params') {
+        params = existing.params;
+      } else {
+        params = new Map<number, TransporterInfo>();
+      }
+      
+      params.set(paramIndex, info);
+      const data: TransporterData = { kind: 'params', params };
+      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+    } else if (parameterIndexOrDescriptor === undefined) {
+      // Property decorator
+      const data: TransporterData = { kind: 'property', info };
+      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+    } else if (typeof parameterIndexOrDescriptor === 'object') {
+      // Method decorator (return type)
+      const data: TransporterData = { kind: 'return', info };
+      TransportMetadata.set('transporter', data)(target, propertyKey as string);
+    }
+  }) as any;
+};
+
+/**
+ * Get transporter info for method return type
+ */
+export const getReturnTransporter = (target: any, propertyKey: string): TransporterInfo | null => {
+  const data = transportReflector.get('transporter', target, propertyKey);
+  if (!data) return null;
+  if (data.kind === 'return') return data.info;
+  return null;
+};
+
+/**
+ * Get transporter info for method parameters
+ */
+export const getParamTransporters = (target: any, propertyKey: string): Map<number, TransporterInfo> => {
+  const data = transportReflector.get('transporter', target, propertyKey);
+  if (!data) return new Map();
+  if (data.kind === 'params') return data.params;
+  return new Map();
+};
+
+/**
+ * Get transporter info for property
+ */
+export const getPropertyTransporter = (target: any, propertyKey: string): TransporterInfo | null => {
+  const data = transportReflector.get('transporter', target, propertyKey);
+  if (!data) return null;
+  if (data.kind === 'property') return data.info;
+  return null;
+};

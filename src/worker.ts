@@ -5,6 +5,12 @@ import { getWorkerCallbacks, getWorkerMethods } from './worker-method';
 import { findTypedStructClass } from './utility/find-typed-struct-cls';
 import { mutateTypedStructProto } from './utility/mutate-typed-struct-proto';
 import { AnyStructConstructor } from './utility/types';
+import {
+  encodeMethodArgs,
+  decodeMethodReturn,
+  encodeMethodReturn,
+  decodeMethodArgs,
+} from './utility/transport';
 
 type SerializedError = {
   message: string;
@@ -242,25 +248,33 @@ const setupWorkerRuntime = async (
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
   const pendingCallbacks = new Map<
     number,
-    { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }
+    {
+      resolve: (value: unknown) => void;
+      reject: (reason?: unknown) => void;
+      method: string;
+    }
   >();
   let nextCallbackId = 1;
 
-  const callMainCallback = (
+  const callMainCallback = async (
     method: string,
     args: unknown[],
   ): Promise<unknown> => {
     if (!parentPort)
       return Promise.reject(new Error('Worker parentPort is not available'));
+    
+    // Encode arguments
+    const encodedArgs = await encodeMethodArgs(cls.prototype, method, args);
+    
     return new Promise((resolve, reject) => {
       const id = nextCallbackId;
       nextCallbackId += 1;
-      pendingCallbacks.set(id, { resolve, reject });
+      pendingCallbacks.set(id, { resolve, reject, method });
       parentPort.postMessage({
         type: 'callback-invoke',
         id,
         method,
-        args,
+        args: encodedArgs,
       } satisfies WorkerHostMessage);
     });
   };
@@ -280,8 +294,12 @@ const setupWorkerRuntime = async (
       const pending = pendingCallbacks.get(message.id);
       if (!pending) return;
       pendingCallbacks.delete(message.id);
-      if (message.ok) pending.resolve(message.result);
-      else {
+      if (message.ok) {
+        // Decode return value
+        decodeMethodReturn(cls.prototype, pending.method, message.result)
+          .then((decoded) => pending.resolve(decoded))
+          .catch((error) => pending.reject(error));
+      } else {
         const failed = message as Extract<
           WorkerCallbackResultMessage,
           { ok: false }
@@ -308,16 +326,31 @@ const setupWorkerRuntime = async (
       return;
     }
     try {
-      const result = await invokeWorkerMethod(
-        instance as Record<string, unknown>,
+      // Decode arguments
+      const decodedArgs = await decodeMethodArgs(
+        cls.prototype,
         message.method,
         Array.isArray(message.args) ? message.args : [],
       );
+      
+      const result = await invokeWorkerMethod(
+        instance as Record<string, unknown>,
+        message.method,
+        decodedArgs,
+      );
+      
+      // Encode return value
+      const encodedResult = await encodeMethodReturn(
+        cls.prototype,
+        message.method,
+        result,
+      );
+      
       parentPort.postMessage({
         type: 'result',
         id: message.id,
         ok: true,
-        result,
+        result: encodedResult,
       } satisfies WorkerHostMessage);
     } catch (error) {
       parentPort.postMessage({
