@@ -360,6 +360,62 @@ export const decodeValue = async (
 };
 
 /**
+ * Get transporter info for constructor parameters
+ * Constructor parameters are stored with propertyKey = undefined
+ */
+const getCtorParamTransporters = (cls: AnyClass): Map<number, TransporterInfo> => {
+  // Constructor parameter metadata is stored without propertyKey
+  const data = transportReflector.get('transporter', cls, undefined as any);
+  if (!data) return new Map();
+  if (data.kind === 'params') return data.params;
+  return new Map();
+};
+
+/**
+ * Encode constructor arguments
+ */
+export const encodeCtorArgs = async (
+  cls: AnyClass,
+  args: unknown[],
+): Promise<unknown[]> => {
+  const paramTransporters = getCtorParamTransporters(cls);
+  const designParamTypes: any[] =
+    Reflect.getMetadata?.('design:paramtypes', cls) || [];
+
+  return await Promise.all(
+    args.map((arg, index) => {
+      const transporter = paramTransporters.get(index) || null;
+      const designType = designParamTypes[index];
+      return encodeValue(arg, transporter, designType, {
+        path: [`ctorArg[${index}]`],
+      });
+    }),
+  );
+};
+
+/**
+ * Decode constructor arguments
+ */
+export const decodeCtorArgs = async (
+  cls: AnyClass,
+  encoded: unknown[],
+): Promise<unknown[]> => {
+  const paramTransporters = getCtorParamTransporters(cls);
+  const designParamTypes: any[] =
+    Reflect.getMetadata?.('design:paramtypes', cls) || [];
+
+  return await Promise.all(
+    encoded.map((arg, index) => {
+      const transporter = paramTransporters.get(index) || null;
+      const designType = designParamTypes[index];
+      return decodeValue(arg, transporter, designType, {
+        path: [`ctorArg[${index}]`],
+      });
+    }),
+  );
+};
+
+/**
  * Encode method arguments
  */
 export const encodeMethodArgs = async (

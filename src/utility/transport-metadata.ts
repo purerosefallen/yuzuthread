@@ -103,10 +103,15 @@ export const TransportType = (
         if (typeof parameterIndexOrDescriptor === 'number') {
           // Parameter decorator
           const paramIndex = parameterIndexOrDescriptor;
+          
+          // For constructor parameters, propertyKey is undefined
+          // For method parameters, propertyKey is the method name
+          const key = propertyKey as string | undefined;
+          
           const existing = transportReflector.get(
             'transporter',
             target,
-            propertyKey as string,
+            key as any,
           );
           let params: Map<number, TransporterInfo>;
 
@@ -118,7 +123,14 @@ export const TransportType = (
 
           params.set(paramIndex, info);
           const data: TransporterData = { kind: 'params', params };
-          TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+          
+          if (key) {
+            // Method parameter
+            TransportMetadata.set('transporter', data, 'transporterKeys')(target, key);
+          } else {
+            // Constructor parameter - store without propertyKey
+            Reflect.defineMetadata?.('transporter', data, target);
+          }
         } else if (parameterIndexOrDescriptor === undefined) {
           // Property decorator
           const data: TransporterData = { kind: 'property', info };
@@ -137,7 +149,8 @@ export const TransportType = (
     propertyKey?: string | symbol,
     parameterIndexOrDescriptor?: number | PropertyDescriptor,
   ) => {
-    if (propertyKey === undefined) {
+    // Check if this is a class decorator (both propertyKey and parameterIndex are undefined)
+    if (propertyKey === undefined && parameterIndexOrDescriptor === undefined) {
       // Class decorator - not supported
       throw new Error('@TransportType cannot be used as a class decorator');
     }
@@ -203,10 +216,15 @@ export const TransportType = (
     if (typeof parameterIndexOrDescriptor === 'number') {
       // Parameter decorator
       const paramIndex = parameterIndexOrDescriptor;
+      
+      // For constructor parameters, propertyKey is undefined
+      // For method parameters, propertyKey is the method name
+      const key = propertyKey as string | undefined;
+      
       const existing = transportReflector.get(
         'transporter',
         target,
-        propertyKey as string,
+        key as any,
       );
       let params: Map<number, TransporterInfo>;
 
@@ -218,7 +236,14 @@ export const TransportType = (
 
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
-      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+      
+      if (key) {
+        // Method parameter
+        TransportMetadata.set('transporter', data, 'transporterKeys')(target, key);
+      } else {
+        // Constructor parameter - store without propertyKey
+        Reflect.defineMetadata?.('transporter', data, target);
+      }
     } else if (parameterIndexOrDescriptor === undefined) {
       // Property decorator
       const data: TransporterData = { kind: 'property', info };
@@ -248,17 +273,23 @@ export const TransportEncoder = <T = any, U = any>(
     propertyKey?: string | symbol,
     parameterIndexOrDescriptor?: number | PropertyDescriptor,
   ) => {
-    if (propertyKey === undefined) {
+    // Check if this is a class decorator
+    if (propertyKey === undefined && parameterIndexOrDescriptor === undefined) {
       throw new Error('@TransportEncoder cannot be used as a class decorator');
     }
 
     if (typeof parameterIndexOrDescriptor === 'number') {
       // Parameter decorator
       const paramIndex = parameterIndexOrDescriptor;
+      
+      // For constructor parameters, propertyKey is undefined
+      // For method parameters, propertyKey is the method name
+      const key = propertyKey as string | undefined;
+      
       const existing = transportReflector.get(
         'transporter',
         target,
-        propertyKey as string,
+        key as any,
       );
       let params: Map<number, TransporterInfo>;
 
@@ -270,7 +301,14 @@ export const TransportEncoder = <T = any, U = any>(
 
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
-      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+      
+      if (key) {
+        // Method parameter
+        TransportMetadata.set('transporter', data, 'transporterKeys')(target, key);
+      } else {
+        // Constructor parameter - store without propertyKey
+        Reflect.defineMetadata?.('transporter', data, target);
+      }
     } else if (parameterIndexOrDescriptor === undefined) {
       // Property decorator
       const data: TransporterData = { kind: 'property', info };

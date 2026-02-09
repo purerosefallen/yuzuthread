@@ -25,6 +25,7 @@ import { createTypedStructInstance } from './utility/typed-struct-registry';
 import { getSharedParams, hasSharedMemorySegments } from './utility/shared-decorator';
 import { toShared } from './to-shared';
 import { getTypedStructInfo } from './utility/type-helpers';
+import { encodeCtorArgs } from './utility/transport';
 
 type ErrorLike = {
   message: string;
@@ -175,12 +176,16 @@ export const initWorker = async <C extends AnyClass>(
     }
   };
 
+  // Encode constructor arguments for worker thread
+  // This ensures custom classes don't lose their prototype through structured clone
+  const encodedCtorArgs = await encodeCtorArgs(cls, processedArgs);
+
   const workerData: WorkerDataPayload & {
     __entryFile: string;
   } = {
     __yuzuthread: true,
     classId: registration.id,
-    ctorArgs: processedArgs as unknown[],
+    ctorArgs: encodedCtorArgs,
     typedStruct: typedStructPayload,
     sharedParams: sharedParamsPayload,
     __entryFile: registration.filePath,

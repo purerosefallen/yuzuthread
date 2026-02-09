@@ -16,6 +16,7 @@ import {
 } from './utility/typed-struct-registry';
 import { getSharedParams } from './utility/shared-decorator';
 import { toShared } from './to-shared';
+import { decodeCtorArgs } from './utility/transport';
 
 type SerializedError = {
   message: string;
@@ -233,10 +234,17 @@ const setupWorkerRuntime = async (
 ): Promise<void> => {
   if (!parentPort) throw new Error('Worker parentPort is not available');
 
+  // Identify which parameters are @Shared
+  const sharedParams = getSharedParams(cls);
+  const sharedParamIndices = new Set(Array.from(sharedParams.keys()));
+
+  // Decode constructor arguments to restore prototypes
+  // For @Shared parameters, we'll replace them later from SharedArrayBuffer
+  const decodedArgs = await decodeCtorArgs(cls, data.ctorArgs);
+
   // Process @Shared parameters
-  const processedArgs = [...data.ctorArgs];
+  const processedArgs = [...decodedArgs];
   if (data.sharedParams) {
-    const sharedParams = getSharedParams(cls);
     const paramTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
 
     for (const sharedParamData of data.sharedParams) {
@@ -265,13 +273,13 @@ const setupWorkerRuntime = async (
       let sharedArg: any;
       if (structInfo) {
         // For typed-struct, directly create instance from sharedBuffer
-        // Don't use toShared because data.ctorArgs[index] lost prototype through structured clone
         const buffer = Buffer.from(sharedBuffer);
         sharedArg = createTypedStructInstance(paramType, buffer, false, []);
       } else {
-        // For non-typed-struct, use toShared (though this might not work well with broken prototypes)
-        const originalArg = data.ctorArgs[index];
-        sharedArg = toShared(originalArg, { useExistingSharedArrayBuffer: sharedBuffer });
+        // For non-typed-struct, use toShared with the decoded arg
+        // The decoded arg should have correct prototype now
+        const decodedArg = decodedArgs[index];
+        sharedArg = toShared(decodedArg, { useExistingSharedArrayBuffer: sharedBuffer });
       }
 
       // Update args
