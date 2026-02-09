@@ -13,3 +13,4 @@ export type {
   TransportTypeFactory,
   TransportEncoder as TransportEncoderType,
 } from './src/utility/transport-metadata';
+export * from './src/to-shared';

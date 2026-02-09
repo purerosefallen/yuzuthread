@@ -8,6 +8,7 @@ import {
 } from './transport-metadata';
 import { findTypedStructClass } from './find-typed-struct-cls';
 import { AnyStructConstructor } from './types';
+import { createTypedStructInstance } from './typed-struct-registry';
 
 type TransportContext = {
   path: string[];
@@ -377,7 +378,6 @@ export const decodeValue = async (
       }
 
       // Use createTypedStructInstance to handle typed-struct instantiation
-      const { createTypedStructInstance } = require('./typed-struct-registry');
       const instance = createTypedStructInstance(targetClass, buffer, clone);
 
       // Decode and set non-struct fields

@@ -10,6 +10,10 @@ import {
   encodeMethodReturn,
   decodeMethodArgs,
 } from './utility/transport';
+import {
+  createTypedStructInstance,
+  safeScanTypedStructClass,
+} from './utility/typed-struct-registry';
 
 type SerializedError = {
   message: string;
@@ -226,9 +230,6 @@ const setupWorkerRuntime = async (
   let instance: any;
   if (data.typedStruct && registration.typedStruct) {
     // Use createTypedStructInstance for typed-struct classes
-    const {
-      createTypedStructInstance,
-    } = require('./utility/typed-struct-registry');
     const sharedBuffer = Buffer.from(data.typedStruct.sharedBuffer);
     instance = createTypedStructInstance(
       cls,
@@ -395,13 +396,9 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
     }
 
     // Scan the worker class itself for typed-struct
-    const {
-      safeScanTypedStructClass,
-    } = require('./utility/typed-struct-registry');
     safeScanTypedStructClass(cls);
 
     // Scan all WorkerMethod parameters and return types
-    const { getWorkerMethods } = require('./worker-method');
     const methods = getWorkerMethods(cls.prototype);
     for (const methodName of methods) {
       try {

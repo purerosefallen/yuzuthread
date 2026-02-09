@@ -21,6 +21,7 @@ import {
   encodeMethodReturn,
   decodeMethodArgs,
 } from './utility/transport';
+import { createTypedStructInstance } from './utility/typed-struct-registry';
 
 type ErrorLike = {
   message: string;
@@ -88,11 +89,8 @@ export const initWorker = async <C extends AnyClass>(
     tempBuffer.copy(sharedBuffer);
 
     typedStructPayload = { sharedBuffer: sharedMemory };
-
+    
     // Use createTypedStructInstance with user's original args
-    const {
-      createTypedStructInstance,
-    } = require('./utility/typed-struct-registry');
     instance = createTypedStructInstance(cls, sharedBuffer, false, args);
   } else {
     // Regular class construction
