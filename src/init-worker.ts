@@ -41,20 +41,8 @@ const serializeError = (error: unknown): ErrorLike => {
 
 const WORKER_BOOTSTRAP = `
 const { workerData } = require('node:worker_threads');
-if (workerData.__tsRegisterPath) {
-  require(workerData.__tsRegisterPath);
-}
 require(workerData.__entryFile);
 `;
-
-const getTsRegisterPath = (filePath: string): string | null => {
-  if (!filePath.endsWith('.ts')) return null;
-  try {
-    return require.resolve('esbuild-register/dist/node');
-  } catch {
-    return null;
-  }
-};
 
 export const initWorker = async <C extends AnyClass>(
   cls: C,
@@ -87,14 +75,12 @@ export const initWorker = async <C extends AnyClass>(
   const instance = new cls(...(localArgs as ConstructorParameters<C>));
   const workerData: WorkerDataPayload & {
     __entryFile: string;
-    __tsRegisterPath: string | null;
   } = {
     __yuzuthread: true,
     classId: registration.id,
     ctorArgs: args as unknown[],
     typedStruct: typedStructPayload,
     __entryFile: registration.filePath,
-    __tsRegisterPath: getTsRegisterPath(registration.filePath),
   };
   const worker = new Worker(WORKER_BOOTSTRAP, {
     eval: true,
