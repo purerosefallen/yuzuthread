@@ -1,6 +1,7 @@
 import { AnyClass } from 'nfkit';
 import { MetadataSetter, Reflector } from 'typed-reflector';
 import { getTypedStructInfo, isBuiltinType } from './type-helpers';
+import { transportReflector, getPropertyTransporter } from './transport-metadata';
 
 /**
  * Factory function for Shared decorator type
@@ -42,9 +43,12 @@ export const hasSharedMemorySegments = (
   cls: AnyClass,
   visited = new WeakSet<AnyClass>(),
 ): boolean => {
-  // Prevent infinite recursion
+  // Detect circular references
   if (visited.has(cls)) {
-    return false;
+    throw new TypeError(
+      `Circular reference detected in @Shared type hierarchy for class: ${cls.name}. ` +
+        'Circular references are not supported in @Shared parameters.',
+    );
   }
   visited.add(cls);
 
@@ -69,9 +73,6 @@ export const hasSharedMemorySegments = (
     return false;
   }
 
-  // Get all metadata keys to find properties with decorators
-  const { transportReflector } = require('./transport-metadata');
-  
   // Get all property keys that have TransportType decorator
   const transporterKeys = transportReflector.getArray('transporterKeys', proto);
   const allKeys = new Set<string | symbol>(transporterKeys);
@@ -217,9 +218,13 @@ export const calculateSharedMemorySize = (
     return 0;
   }
 
-  // Circular reference detection
+  // Detect circular references
   if (visited.has(obj)) {
-    return 0;
+    const objName = obj.constructor?.name || 'Object';
+    throw new TypeError(
+      `Circular reference detected in @Shared parameter object (type: ${objName}). ` +
+        'Circular references are not supported in @Shared parameters.',
+    );
   }
   visited.add(obj);
 
@@ -285,7 +290,6 @@ export const calculateSharedMemorySize = (
       const fieldValue = obj[key];
       
       // Check for TransportType metadata or design:type
-      const { getPropertyTransporter } = require('./transport-metadata');
       const propTransporter = getPropertyTransporter(proto, key);
       const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
 
@@ -310,7 +314,6 @@ export const calculateSharedMemorySize = (
       const fieldValue = obj[key];
       
       // Check for TransportType metadata or design:type
-      const { getPropertyTransporter } = require('./transport-metadata');
       const propTransporter = getPropertyTransporter(proto, key);
       const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
 

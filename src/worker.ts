@@ -17,6 +17,7 @@ import {
 import { getSharedParams } from './utility/shared-decorator';
 import { toShared } from './to-shared';
 import { decodeCtorArgs } from './utility/transport';
+import { getTypedStructInfo } from './utility/type-helpers';
 
 type SerializedError = {
   message: string;
@@ -267,7 +268,6 @@ const setupWorkerRuntime = async (
       }
 
       // Check if parameter type is a typed-struct
-      const { getTypedStructInfo } = require('./utility/type-helpers');
       const structInfo = getTypedStructInfo(paramType);
 
       let sharedArg: any;

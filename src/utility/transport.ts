@@ -18,6 +18,7 @@ import {
 
 type TransportContext = {
   path: string[];
+  visited?: WeakSet<object>;
 };
 
 /**
@@ -65,6 +66,7 @@ export const encodeValue = async (
             targetClass,
             {
               path: [...context.path, `[${idx}]`],
+              visited: context.visited,
             },
           ),
         ),
@@ -72,7 +74,10 @@ export const encodeValue = async (
     }
     return await Promise.all(
       value.map((item, idx) =>
-        encodeValue(item, null, null, { path: [...context.path, `[${idx}]`] }),
+        encodeValue(item, null, null, { 
+          path: [...context.path, `[${idx}]`],
+          visited: context.visited,
+        }),
       ),
     );
   }
@@ -119,6 +124,20 @@ export const encodeValue = async (
 
   // Handle custom class
   if (typeof value === 'object') {
+    // Detect circular references
+    const visited = context.visited || new WeakSet<object>();
+    if (visited.has(value)) {
+      const className = targetClass?.name || value.constructor?.name || 'Object';
+      throw new TypeError(
+        `Circular reference detected in @TransportType hierarchy for class: ${className}. ` +
+          'Circular references are not supported in transport.',
+      );
+    }
+    visited.add(value);
+
+    // Update context with visited set
+    context = { ...context, visited };
+
     // Check if it's a typed-struct class
     const structInfo = getTypedStructInfo(targetClass);
 
@@ -163,7 +182,7 @@ export const encodeValue = async (
           value[key],
           propTransporter,
           propDesignType,
-          { path: [...context.path, key] },
+          { path: [...context.path, key], visited: context.visited },
         );
       }
 
@@ -186,7 +205,7 @@ export const encodeValue = async (
         value[key],
         propTransporter,
         propDesignType,
-        { path: [...context.path, key] },
+        { path: [...context.path, key], visited: context.visited },
       );
     }
 

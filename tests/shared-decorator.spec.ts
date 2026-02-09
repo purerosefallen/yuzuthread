@@ -70,14 +70,10 @@ describe('Shared decorator utilities', () => {
       expect(hasSharedMemorySegments(Date)).toBe(false);
     });
 
-    it('should handle circular references', () => {
+    it('should throw error for circular type references', () => {
       class CircularB {
-        @TransportType(() => SharedStruct)
-        shared: SharedStruct;
-
-        constructor() {
-          this.shared = new SharedStruct();
-        }
+        @TransportType(() => CircularA)
+        a?: any; // Use any to avoid TS error
       }
 
       class CircularA {
@@ -85,9 +81,10 @@ describe('Shared decorator utilities', () => {
         b?: CircularB;
       }
 
-      // Should detect shared memory through nested reference
-      expect(hasSharedMemorySegments(CircularA)).toBe(true);
-      expect(hasSharedMemorySegments(CircularB)).toBe(true);
+      // Should throw error on circular reference
+      expect(() => hasSharedMemorySegments(CircularA)).toThrow(
+        'Circular reference detected',
+      );
     });
   });
 
@@ -144,13 +141,14 @@ describe('Shared decorator utilities', () => {
       expect(size).toBe(0);
     });
 
-    it('should handle circular references', () => {
+    it('should throw error for circular object references', () => {
       const struct = new SharedStruct();
       const container: any = { struct };
       container.self = container; // Circular reference
 
-      const size = calculateSharedMemorySize(container);
-      expect(size).toBe(4); // Should not infinite loop
+      expect(() => calculateSharedMemorySize(container)).toThrow(
+        'Circular reference detected',
+      );
     });
   });
 

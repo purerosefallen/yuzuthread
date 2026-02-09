@@ -1,5 +1,6 @@
 import { initWorker } from '..';
 import { TransportWorker } from './fixtures/transport.worker.js';
+import { CircularRefWorker, Node } from './fixtures/circular-ref.worker.js';
 
 class CustomData {
   constructor(
@@ -95,6 +96,22 @@ describe('transport', () => {
 
     expect(result).toHaveProperty('value', 142);
     expect(result).toHaveProperty('text', 'callback from main');
+
+    await worker.finalize();
+  });
+
+  it('should throw error for circular references in transport', async () => {
+    const worker = await initWorker(CircularRefWorker);
+
+    const node1 = new Node(10);
+    const node2 = new Node(20);
+    node1.next = node2;
+    node2.next = node1; // Create circular reference
+
+    // Should throw error when attempting to transport
+    await expect(worker.processNode(node1)).rejects.toThrow(
+      'Circular reference detected',
+    );
 
     await worker.finalize();
   });

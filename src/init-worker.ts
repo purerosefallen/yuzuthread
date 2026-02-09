@@ -22,7 +22,7 @@ import {
   decodeMethodArgs,
 } from './utility/transport';
 import { createTypedStructInstance } from './utility/typed-struct-registry';
-import { getSharedParams, hasSharedMemorySegments } from './utility/shared-decorator';
+import { getSharedParams, hasSharedMemorySegments, calculateSharedMemorySize } from './utility/shared-decorator';
 import { toShared } from './to-shared';
 import { getTypedStructInfo } from './utility/type-helpers';
 import { encodeCtorArgs } from './utility/transport';
@@ -111,7 +111,6 @@ export const initWorker = async <C extends AnyClass>(
       }
 
       // Calculate memory size for this parameter
-      const { calculateSharedMemorySize } = require('./utility/shared-decorator');
       const memorySize = calculateSharedMemorySize(arg);
 
       if (memorySize === 0) {
