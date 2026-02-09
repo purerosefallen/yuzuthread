@@ -6,6 +6,8 @@ import {
   getPropertyTransporter,
   transportReflector,
 } from './transport-metadata';
+import { findTypedStructClass } from './find-typed-struct-cls';
+import { AnyStructConstructor } from './types';
 
 type TransportContext = {
   path: string[];
@@ -56,6 +58,24 @@ const isPlainObject = (obj: any): boolean => {
   if (Array.isArray(obj)) return false;
   const proto = Object.getPrototypeOf(obj);
   return proto === Object.prototype || proto === null;
+};
+
+/**
+ * Get typed-struct field names from a struct class
+ */
+const getTypedStructFields = (structCls: AnyStructConstructor): Set<string> => {
+  const offsets = structCls.getOffsets();
+  return new Set(Object.keys(offsets));
+};
+
+/**
+ * Check if a class is or extends a typed-struct class
+ */
+const getTypedStructInfo = (cls: AnyClass): { structCls: AnyStructConstructor; fields: Set<string> } | null => {
+  const structCls = findTypedStructClass(cls);
+  if (!structCls) return null;
+  const fields = getTypedStructFields(structCls);
+  return { structCls, fields };
 };
 
 /**
@@ -125,6 +145,42 @@ export const encodeValue = async (
 
   // Handle custom class
   if (typeof value === 'object') {
+    // Check if it's a typed-struct class
+    const structInfo = getTypedStructInfo(targetClass);
+    
+    if (structInfo) {
+      // Handle typed-struct class
+      const encoded: any = {
+        __type: 'TypedStructClass',
+        __className: targetClass.name,
+        structBuffer: null,
+        data: {},
+      };
+
+      // Dump the struct buffer using the static raw method
+      const buffer = structInfo.structCls.raw(value) as Buffer;
+      encoded.structBuffer = new Uint8Array(buffer);
+
+      // Encode non-struct fields
+      const proto = targetClass.prototype;
+      for (const key of Object.keys(value)) {
+        if (structInfo.fields.has(key)) continue; // Skip struct fields
+        
+        const propTransporter = getPropertyTransporter(proto, key);
+        const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
+        
+        encoded.data[key] = await encodeValue(
+          value[key],
+          propTransporter,
+          propDesignType,
+          { path: [...context.path, key] },
+        );
+      }
+
+      return encoded;
+    }
+
+    // Handle regular custom class
     const encoded: any = {
       __type: 'CustomClass',
       __className: targetClass.name,
@@ -206,6 +262,33 @@ export const decodeValue = async (
   if (typeof encoded === 'object' && encoded.__type) {
     if (encoded.__type === 'Buffer') {
       return Buffer.from(encoded.data as Uint8Array);
+    }
+
+    if (encoded.__type === 'TypedStructClass' && targetClass) {
+      const structInfo = getTypedStructInfo(targetClass);
+      if (!structInfo) {
+        throw new Error(`${context.path.join('.')}: Class is marked as TypedStructClass but is not a typed-struct class`);
+      }
+
+      // Create instance with struct buffer
+      const buffer = encoded.structBuffer ? Buffer.from(encoded.structBuffer) : undefined;
+      const instance = new (targetClass as any)(buffer);
+
+      // Decode and set non-struct fields
+      const proto = targetClass.prototype;
+      for (const key of Object.keys(encoded.data)) {
+        const propTransporter = getPropertyTransporter(proto, key);
+        const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
+
+        instance[key] = await decodeValue(
+          encoded.data[key],
+          propTransporter,
+          propDesignType,
+          { path: [...context.path, key] },
+        );
+      }
+
+      return instance;
     }
 
     if (encoded.__type === 'CustomClass' && targetClass) {

@@ -309,6 +309,110 @@ Encoders support async operations:
 - **Plain objects** - passed as-is
 - **Custom classes** - require `@TransportType()` or `@TransportEncoder()`
 
+### Typed Struct Classes
+
+Classes that extend `typed-struct` are automatically detected and handled with special transport logic. The library separates struct fields (stored in the buffer) from regular fields:
+
+```ts
+import { Struct } from 'typed-struct';
+import { DefineWorker, WorkerMethod, TransportType, initWorker } from 'yuzuthread';
+
+const Base = new Struct('DataBase')
+  .UInt8('id')
+  .UInt32LE('counter')
+  .compile();
+
+class MyData extends Base {
+  declare id: number;
+  declare counter: number;
+  extraField: string = '';
+  nestedData?: { name: string };
+}
+
+@DefineWorker()
+class StructWorker {
+  @WorkerMethod()
+  @TransportType(() => MyData)
+  async processData(
+    @TransportType(() => MyData) data?: MyData,
+  ): Promise<MyData> {
+    const result = new MyData();
+    if (data) {
+      result.id = data.id;
+      result.counter = data.counter + 1;
+      result.extraField = data.extraField + ' processed';
+      result.nestedData = data.nestedData;
+    } else {
+      result.id = 1;
+      result.counter = 0;
+      result.extraField = 'new';
+    }
+    return result;
+  }
+}
+
+const worker = await initWorker(StructWorker);
+const data = await worker.processData();
+console.log(data.id); // -> 1
+console.log(data.counter); // -> 0
+console.log(data.extraField); // -> 'new'
+```
+
+**How it works:**
+- When encoding, the library dumps the struct buffer and encodes non-struct fields separately
+- When decoding, it creates a new instance with the buffer, then restores non-struct fields
+- All struct fields (defined by `typed-struct`) are preserved in the buffer
+- Additional class fields are transported using the standard transport logic
+
+**Expected usage pattern:**
+```ts
+class SomeDataClass extends new Struct()...compile() {
+  // Struct fields (declare them for TypeScript)
+  declare structField1: number;
+  declare structField2: number;
+  
+  // Other fields (will be transported separately)
+  otherField: string = '';
+}
+```
+
+**Mixed scenarios with transport decorators:**
+
+Typed-struct classes can use `@TransportType()` and `@TransportEncoder()` on their non-struct fields:
+
+```ts
+class ComplexData extends Base {
+  declare value: number;  // struct field
+  declare count: number;  // struct field
+  
+  @TransportType(() => MyData)
+  nested?: MyData;  // non-struct field with custom class
+  
+  @TransportEncoder(
+    (date: Date) => date.toISOString(),
+    (str: string) => new Date(str),
+  )
+  timestamp?: Date;  // non-struct field with custom encoder
+}
+```
+
+Regular classes can have typed-struct fields:
+
+```ts
+class WrapperClass {
+  @TransportType(() => MyStructData)
+  data!: MyStructData;  // typed-struct class field
+  
+  label: string = '';  // regular field
+}
+```
+
+All combinations work seamlessly - the transport system automatically handles:
+- Typed-struct classes with decorated non-struct fields
+- Regular classes with typed-struct fields
+- Arrays of any of the above
+- Nested structures of any depth
+
 ### Notes on Transport
 
 - `@TransportType()` can be used without arguments to enable `emitDecoratorMetadata` without registering metadata
