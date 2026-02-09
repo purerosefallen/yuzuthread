@@ -22,9 +22,11 @@ import {
   decodeMethodArgs,
 } from './utility/transport';
 import { createTypedStructInstance } from './utility/typed-struct-registry';
-import { getSharedParams, hasSharedMemorySegments, calculateSharedMemorySize } from './utility/shared-decorator';
+import {
+  getSharedParams,
+  calculateSharedMemorySize,
+} from './utility/shared-decorator';
 import { toShared } from './to-shared';
-import { getTypedStructInfo } from './utility/type-helpers';
 import { encodeCtorArgs } from './utility/transport';
 
 type ErrorLike = {
@@ -95,7 +97,9 @@ export const initWorker = async <C extends AnyClass>(
 
     for (const [index, paramInfo] of sharedParams) {
       const arg = args[index];
-      const paramType = paramInfo.factory ? paramInfo.factory() : paramTypes[index];
+      const paramType = paramInfo.factory
+        ? paramInfo.factory()
+        : paramTypes[index];
 
       if (!paramType) {
         throw new TypeError(
@@ -123,7 +127,9 @@ export const initWorker = async <C extends AnyClass>(
       const sharedBuffer = new SharedArrayBuffer(memorySize);
 
       // Convert argument to shared memory
-      const sharedArg = toShared(arg, { useExistingSharedArrayBuffer: sharedBuffer });
+      const sharedArg = toShared(arg, {
+        useExistingSharedArrayBuffer: sharedBuffer,
+      });
 
       // Update processed args for worker construction
       processedArgs[index] = sharedArg;
@@ -139,7 +145,9 @@ export const initWorker = async <C extends AnyClass>(
   let instance: InstanceType<C>;
   if (typedStruct) {
     // First, create a temporary instance with processed args to get initial buffer values
-    const tempInstance = new cls(...(processedArgs as ConstructorParameters<C>));
+    const tempInstance = new cls(
+      ...(processedArgs as ConstructorParameters<C>),
+    );
     const tempBuffer = typedStruct.structCls.raw(tempInstance) as Buffer;
 
     // Create SharedArrayBuffer and copy initial values
@@ -148,9 +156,14 @@ export const initWorker = async <C extends AnyClass>(
     tempBuffer.copy(sharedBuffer);
 
     typedStructPayload = { sharedBuffer: sharedMemory };
-    
+
     // Use createTypedStructInstance with processed args
-    instance = createTypedStructInstance(cls, sharedBuffer, false, processedArgs as any);
+    instance = createTypedStructInstance(
+      cls,
+      sharedBuffer,
+      false,
+      processedArgs as any,
+    );
   } else {
     // Regular class construction
     instance = new cls(...(processedArgs as ConstructorParameters<C>));

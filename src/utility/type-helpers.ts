@@ -43,7 +43,7 @@ export const TYPED_ARRAYS = new Set([
 
 /**
  * Check if a class is a built-in type
- * 
+ *
  * @param cls The class to check
  * @returns true if the class is a built-in type
  */
@@ -56,7 +56,7 @@ export const isBuiltinType = (cls: any): boolean => {
 
 /**
  * Check if an object is a plain object (not a class instance)
- * 
+ *
  * @param obj The object to check
  * @returns true if the object is a plain object
  */
@@ -69,7 +69,7 @@ export const isPlainObject = (obj: any): boolean => {
 
 /**
  * Get typed-struct field names from a struct class
- * 
+ *
  * @param structCls The typed-struct class
  * @returns A set of field names
  */
@@ -82,7 +82,7 @@ export const getTypedStructFields = (
 
 /**
  * Get typed-struct information for a class
- * 
+ *
  * @param cls The class to check
  * @returns Struct information if the class is/extends a typed-struct, null otherwise
  */

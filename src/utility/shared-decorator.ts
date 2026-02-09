@@ -1,7 +1,10 @@
 import { AnyClass } from 'nfkit';
 import { MetadataSetter, Reflector } from 'typed-reflector';
 import { getTypedStructInfo, isBuiltinType } from './type-helpers';
-import { transportReflector, getPropertyTransporter } from './transport-metadata';
+import {
+  transportReflector,
+  getPropertyTransporter,
+} from './transport-metadata';
 
 /**
  * Factory function for Shared decorator type
@@ -85,12 +88,12 @@ export const hasSharedMemorySegments = (
 
     // Check design:type metadata
     const designType = Reflect.getMetadata?.('design:type', proto, key);
-    
+
     // Check if design:type is Buffer or SharedArrayBuffer
     if (designType === Buffer || designType === SharedArrayBuffer) {
       return true;
     }
-    
+
     if (designType && !isBuiltinType(designType)) {
       // Recursively check the property type
       if (hasSharedMemorySegments(designType, visited)) {
@@ -99,7 +102,11 @@ export const hasSharedMemorySegments = (
     }
 
     // Check TransportType metadata
-    const transporterData = transportReflector.get('transporter', proto, key as string);
+    const transporterData = transportReflector.get(
+      'transporter',
+      proto,
+      key as string,
+    );
     if (transporterData && transporterData.kind === 'property') {
       const info = transporterData.info;
       if (info.type === 'class') {
@@ -107,12 +114,12 @@ export const hasSharedMemorySegments = (
         const targetClass = Array.isArray(factoryResult)
           ? factoryResult[0]
           : factoryResult;
-        
+
         // Check if it's Buffer or SharedArrayBuffer
         if (targetClass === Buffer || targetClass === SharedArrayBuffer) {
           return true;
         }
-        
+
         if (hasSharedMemorySegments(targetClass, visited)) {
           return true;
         }
@@ -129,9 +136,7 @@ export const hasSharedMemorySegments = (
  *
  * @param factory Optional factory function that returns the class type
  */
-export const Shared = (
-  factory?: SharedTypeFactory,
-): ParameterDecorator => {
+export const Shared = (factory?: SharedTypeFactory): ParameterDecorator => {
   return ((
     target: any,
     propertyKey: string | symbol | undefined,
@@ -139,9 +144,7 @@ export const Shared = (
   ) => {
     // Validate that it's a constructor parameter
     if (propertyKey !== undefined) {
-      throw new TypeError(
-        '@Shared can only be used on constructor parameters',
-      );
+      throw new TypeError('@Shared can only be used on constructor parameters');
     }
 
     // Get the parameter type from design:paramtypes
@@ -170,7 +173,7 @@ export const Shared = (
     // Store metadata - retrieve existing array and append
     const existing = sharedReflector.getArray('sharedParams', target);
     const newArray = [...existing, { index: parameterIndex, factory }];
-    
+
     // Use MetadataSetter to set the array
     Reflect.defineMetadata?.('sharedParams', newArray, target);
   }) as ParameterDecorator;
@@ -184,17 +187,17 @@ export const getSharedParams = (
 ): Map<number, SharedParamInfo> => {
   const params = sharedReflector.getArray('sharedParams', target);
   const map = new Map<number, SharedParamInfo>();
-  
+
   for (const param of params) {
     map.set(param.index, param);
   }
-  
+
   return map;
 };
 
 /**
  * Calculate the total shared memory size needed for an object
- * 
+ *
  * @param obj The object to calculate size for
  * @param visited Set of already visited objects to prevent circular references
  * @returns The total size in bytes
@@ -269,7 +272,7 @@ export const calculateSharedMemorySize = (
   const structInfo = getTypedStructInfo(ctor);
   if (structInfo) {
     const rawBuffer = structInfo.structCls.raw(obj) as Buffer;
-    
+
     // Check if already backed by SharedArrayBuffer
     if (
       rawBuffer.buffer instanceof SharedArrayBuffer ||
@@ -288,7 +291,7 @@ export const calculateSharedMemorySize = (
       }
 
       const fieldValue = obj[key];
-      
+
       // Check for TransportType metadata or design:type
       const propTransporter = getPropertyTransporter(proto, key);
       const propDesignType = Reflect.getMetadata?.('design:type', proto, key);
@@ -312,7 +315,7 @@ export const calculateSharedMemorySize = (
 
     for (const key of Object.keys(obj)) {
       const fieldValue = obj[key];
-      
+
       // Check for TransportType metadata or design:type
       const propTransporter = getPropertyTransporter(proto, key);
       const propDesignType = Reflect.getMetadata?.('design:type', proto, key);

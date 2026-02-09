@@ -98,16 +98,19 @@ export const TransportType = (
 
       // If we have a resolved factory, register metadata directly
       if (resolvedFactory) {
-        const info: TransporterInfo = { type: 'class', factory: resolvedFactory };
+        const info: TransporterInfo = {
+          type: 'class',
+          factory: resolvedFactory,
+        };
 
         if (typeof parameterIndexOrDescriptor === 'number') {
           // Parameter decorator
           const paramIndex = parameterIndexOrDescriptor;
-          
+
           // For constructor parameters, propertyKey is undefined
           // For method parameters, propertyKey is the method name
           const key = propertyKey as string | undefined;
-          
+
           const existing = transportReflector.get(
             'transporter',
             target,
@@ -123,10 +126,14 @@ export const TransportType = (
 
           params.set(paramIndex, info);
           const data: TransporterData = { kind: 'params', params };
-          
+
           if (key) {
             // Method parameter
-            TransportMetadata.set('transporter', data, 'transporterKeys')(target, key);
+            TransportMetadata.set(
+              'transporter',
+              data,
+              'transporterKeys',
+            )(target, key);
           } else {
             // Constructor parameter - store without propertyKey
             Reflect.defineMetadata?.('transporter', data, target);
@@ -134,11 +141,19 @@ export const TransportType = (
         } else if (parameterIndexOrDescriptor === undefined) {
           // Property decorator
           const data: TransporterData = { kind: 'property', info };
-          TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+          TransportMetadata.set(
+            'transporter',
+            data,
+            'transporterKeys',
+          )(target, propertyKey as string);
         } else if (typeof parameterIndexOrDescriptor === 'object') {
           // Method decorator (return type)
           const data: TransporterData = { kind: 'return', info };
-          TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+          TransportMetadata.set(
+            'transporter',
+            data,
+            'transporterKeys',
+          )(target, propertyKey as string);
         }
       }
     }) as any;
@@ -216,11 +231,11 @@ export const TransportType = (
     if (typeof parameterIndexOrDescriptor === 'number') {
       // Parameter decorator
       const paramIndex = parameterIndexOrDescriptor;
-      
+
       // For constructor parameters, propertyKey is undefined
       // For method parameters, propertyKey is the method name
       const key = propertyKey as string | undefined;
-      
+
       const existing = transportReflector.get(
         'transporter',
         target,
@@ -236,10 +251,14 @@ export const TransportType = (
 
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
-      
+
       if (key) {
         // Method parameter
-        TransportMetadata.set('transporter', data, 'transporterKeys')(target, key);
+        TransportMetadata.set(
+          'transporter',
+          data,
+          'transporterKeys',
+        )(target, key);
       } else {
         // Constructor parameter - store without propertyKey
         Reflect.defineMetadata?.('transporter', data, target);
@@ -247,11 +266,19 @@ export const TransportType = (
     } else if (parameterIndexOrDescriptor === undefined) {
       // Property decorator
       const data: TransporterData = { kind: 'property', info };
-      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+      TransportMetadata.set(
+        'transporter',
+        data,
+        'transporterKeys',
+      )(target, propertyKey as string);
     } else if (typeof parameterIndexOrDescriptor === 'object') {
       // Method decorator (return type)
       const data: TransporterData = { kind: 'return', info };
-      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+      TransportMetadata.set(
+        'transporter',
+        data,
+        'transporterKeys',
+      )(target, propertyKey as string);
     }
   }) as any;
 };
@@ -281,11 +308,11 @@ export const TransportEncoder = <T = any, U = any>(
     if (typeof parameterIndexOrDescriptor === 'number') {
       // Parameter decorator
       const paramIndex = parameterIndexOrDescriptor;
-      
+
       // For constructor parameters, propertyKey is undefined
       // For method parameters, propertyKey is the method name
       const key = propertyKey as string | undefined;
-      
+
       const existing = transportReflector.get(
         'transporter',
         target,
@@ -301,10 +328,14 @@ export const TransportEncoder = <T = any, U = any>(
 
       params.set(paramIndex, info);
       const data: TransporterData = { kind: 'params', params };
-      
+
       if (key) {
         // Method parameter
-        TransportMetadata.set('transporter', data, 'transporterKeys')(target, key);
+        TransportMetadata.set(
+          'transporter',
+          data,
+          'transporterKeys',
+        )(target, key);
       } else {
         // Constructor parameter - store without propertyKey
         Reflect.defineMetadata?.('transporter', data, target);
@@ -312,11 +343,19 @@ export const TransportEncoder = <T = any, U = any>(
     } else if (parameterIndexOrDescriptor === undefined) {
       // Property decorator
       const data: TransporterData = { kind: 'property', info };
-      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+      TransportMetadata.set(
+        'transporter',
+        data,
+        'transporterKeys',
+      )(target, propertyKey as string);
     } else if (typeof parameterIndexOrDescriptor === 'object') {
       // Method decorator (return type)
       const data: TransporterData = { kind: 'return', info };
-      TransportMetadata.set('transporter', data, 'transporterKeys')(target, propertyKey as string);
+      TransportMetadata.set(
+        'transporter',
+        data,
+        'transporterKeys',
+      )(target, propertyKey as string);
     }
   }) as any;
 };

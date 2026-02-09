@@ -74,7 +74,7 @@ export const encodeValue = async (
     }
     return await Promise.all(
       value.map((item, idx) =>
-        encodeValue(item, null, null, { 
+        encodeValue(item, null, null, {
           path: [...context.path, `[${idx}]`],
           visited: context.visited,
         }),
@@ -127,7 +127,8 @@ export const encodeValue = async (
     // Detect circular references
     const visited = context.visited || new WeakSet<object>();
     if (visited.has(value)) {
-      const className = targetClass?.name || value.constructor?.name || 'Object';
+      const className =
+        targetClass?.name || value.constructor?.name || 'Object';
       throw new TypeError(
         `Circular reference detected in @TransportType hierarchy for class: ${className}. ` +
           'Circular references are not supported in transport.',
@@ -382,7 +383,9 @@ export const decodeValue = async (
  * Get transporter info for constructor parameters
  * Constructor parameters are stored with propertyKey = undefined
  */
-const getCtorParamTransporters = (cls: AnyClass): Map<number, TransporterInfo> => {
+const getCtorParamTransporters = (
+  cls: AnyClass,
+): Map<number, TransporterInfo> => {
   // Constructor parameter metadata is stored without propertyKey
   const data = transportReflector.get('transporter', cls, undefined as any);
   if (!data) return new Map();

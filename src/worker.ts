@@ -93,10 +93,12 @@ export type WorkerDataPayload = {
   typedStruct: {
     sharedBuffer: SharedArrayBuffer;
   } | null;
-  sharedParams: {
-    index: number;
-    sharedBuffer: SharedArrayBuffer;
-  }[] | null;
+  sharedParams:
+    | {
+        index: number;
+        sharedBuffer: SharedArrayBuffer;
+      }[]
+    | null;
 };
 
 export type WorkerTypedStructRegistration = {
@@ -259,7 +261,9 @@ const setupWorkerRuntime = async (
       }
 
       // Get the parameter type
-      const paramType = paramInfo.factory ? paramInfo.factory() : paramTypes[index];
+      const paramType = paramInfo.factory
+        ? paramInfo.factory()
+        : paramTypes[index];
 
       if (!paramType) {
         throw new TypeError(
@@ -279,7 +283,9 @@ const setupWorkerRuntime = async (
         // For non-typed-struct, use toShared with the decoded arg
         // The decoded arg should have correct prototype now
         const decodedArg = decodedArgs[index];
-        sharedArg = toShared(decodedArg, { useExistingSharedArrayBuffer: sharedBuffer });
+        sharedArg = toShared(decodedArg, {
+          useExistingSharedArrayBuffer: sharedBuffer,
+        });
       }
 
       // Update args
@@ -489,10 +495,13 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
 
     // Scan @Shared constructor parameters
     const sharedParams = getSharedParams(cls);
-    const ctorParamTypes = Reflect.getMetadata?.('design:paramtypes', cls) || [];
+    const ctorParamTypes =
+      Reflect.getMetadata?.('design:paramtypes', cls) || [];
     for (const [index, paramInfo] of sharedParams) {
       try {
-        const paramType = paramInfo.factory ? paramInfo.factory() : ctorParamTypes[index];
+        const paramType = paramInfo.factory
+          ? paramInfo.factory()
+          : ctorParamTypes[index];
         if (paramType) {
           safeScanTypedStructClass(paramType);
         }

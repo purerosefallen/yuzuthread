@@ -9,12 +9,12 @@ import {
 
 /**
  * Convert an object to use shared memory where possible
- * 
+ *
  * @param inst The object to convert
  * @param options Optional configuration
  * @param options.useExistingSharedArrayBuffer If provided, typed-struct classes will use this SharedArrayBuffer instead of creating a new one
  * @returns The converted object (modified in-place for user classes)
- * 
+ *
  * Behavior:
  * - Buffer: Creates a SharedArrayBuffer copy
  * - SharedArrayBuffer: Returns as-is
@@ -22,7 +22,7 @@ import {
  * - typed-struct classes: Creates new instance with SharedArrayBuffer, converts non-struct fields with @TransportType
  * - User classes: Recursively converts fields with @TransportType in-place (with circular reference protection)
  * - Arrays: Converts each element in-place
- * 
+ *
  * Field conversion rules:
  * - Only fields with @TransportType decorator are converted
  * - @TransportType with encoder mode is not converted (manual encoding)
@@ -41,10 +41,10 @@ export const toShared = <T>(
    */
   const shouldConvertWithTransporter = (transporter: any): boolean => {
     if (!transporter) return false;
-    
+
     // Encoder type should not trigger conversion (manual encoding)
     if (transporter.type === 'encoder') return false;
-    
+
     // Class type: check if the class is not built-in
     if (transporter.type === 'class') {
       const factoryResult = transporter.factory();
@@ -53,7 +53,7 @@ export const toShared = <T>(
         : factoryResult;
       return !isBuiltinType(targetClass);
     }
-    
+
     return false;
   };
 
@@ -146,7 +146,7 @@ export const toShared = <T>(
       const args: unknown[] = [];
       // Try to get constructor parameters from the original instance
       // For most typed-struct classes, we can construct with buffer only
-      
+
       // Create new instance with shared buffer
       // typed-struct cannot replace buffer in-place, must create new instance
       const newInstance = createTypedStructInstance(
@@ -168,7 +168,7 @@ export const toShared = <T>(
         }
 
         const fieldValue = value[key];
-        
+
         // Check for TransportType metadata
         const propTransporter = getPropertyTransporter(proto, key);
 
@@ -195,7 +195,7 @@ export const toShared = <T>(
       // Scan all properties
       for (const key of Object.keys(value)) {
         const fieldValue = value[key];
-        
+
         // Check for TransportType metadata
         const propTransporter = getPropertyTransporter(proto, key);
 

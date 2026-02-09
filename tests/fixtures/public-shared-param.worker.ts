@@ -15,7 +15,9 @@ export class PublicSharedData extends Base {
 // Expected usage: constructor(@Shared() public sharedData: SharedData)
 @DefineWorker()
 export class PublicSharedWorker {
-  constructor(@Shared(() => PublicSharedData) public sharedData: PublicSharedData) {}
+  constructor(
+    @Shared(() => PublicSharedData) public sharedData: PublicSharedData,
+  ) {}
 
   @WorkerMethod()
   incrementCounter(): number {

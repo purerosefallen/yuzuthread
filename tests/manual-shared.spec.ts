@@ -54,7 +54,7 @@ describe('Manual shared memory with toShared()', () => {
     // All three references should be synchronized
     sharedData.counter++;
     await worker.incrementCounter();
-    
+
     // After increment in both places: 50 -> 51 -> 52
     expect(sharedData.counter).toBe(52);
     expect(worker.data.counter).toBe(52);

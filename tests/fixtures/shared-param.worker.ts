@@ -69,19 +69,14 @@ export class MultiSharedWorker {
 }
 
 // typed-struct worker with @Shared parameters
-const WorkerBase = new Struct('SharedWorkerBase')
-  .UInt8('value')
-  .compile();
+const WorkerBase = new Struct('SharedWorkerBase').UInt8('value').compile();
 
 @DefineWorker()
 export class MixedSharedWorker extends WorkerBase {
   declare value: number;
   private data: SharedData;
 
-  constructor(
-    initial: number,
-    @Shared(() => SharedData) data: SharedData,
-  ) {
+  constructor(initial: number, @Shared(() => SharedData) data: SharedData) {
     super([initial]);
     this.data = data;
   }

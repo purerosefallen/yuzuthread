@@ -70,23 +70,28 @@ describe('toShared', () => {
       const result = toShared(arr);
 
       expect(result).toBe(arr); // Same array reference
-      expect((result[0] as Buffer).buffer.constructor.name).toBe('SharedArrayBuffer');
-      expect((result[1] as Buffer).buffer.constructor.name).toBe('SharedArrayBuffer');
+      expect((result[0] as Buffer).buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
+      expect((result[1] as Buffer).buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
       expect(result[2]).toBe('string');
       expect(result[3]).toBe(123);
     });
 
     it('should handle nested arrays', () => {
-      const arr = [
-        [Buffer.from([1, 2])],
-        [Buffer.from([3, 4])],
-      ];
+      const arr = [[Buffer.from([1, 2])], [Buffer.from([3, 4])]];
 
       const result = toShared(arr);
 
       expect(result).toBe(arr);
-      expect((result[0][0] as Buffer).buffer.constructor.name).toBe('SharedArrayBuffer');
-      expect((result[1][0] as Buffer).buffer.constructor.name).toBe('SharedArrayBuffer');
+      expect((result[0][0] as Buffer).buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
+      expect((result[1][0] as Buffer).buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
     });
   });
 
@@ -218,9 +223,7 @@ describe('toShared', () => {
   });
 
   describe('Complex nested structures', () => {
-    const Base = new Struct('NestedTestBase')
-      .UInt8('id')
-      .compile();
+    const Base = new Struct('NestedTestBase').UInt8('id').compile();
 
     class NestedStruct extends Base {
       declare id: number;
@@ -240,10 +243,7 @@ describe('toShared', () => {
       const container = new Container();
       container.struct = new NestedStruct();
       container.struct.id = 5;
-      container.buffers = [
-        Buffer.from([1, 2]),
-        Buffer.from([3, 4]),
-      ];
+      container.buffers = [Buffer.from([1, 2]), Buffer.from([3, 4])];
       container.metadata = { name: 'test', value: 100 };
 
       const originalStruct = container.struct;
@@ -256,8 +256,12 @@ describe('toShared', () => {
       const raw = Base.raw(result.struct!) as Buffer;
       expect(raw.buffer.constructor.name).toBe('SharedArrayBuffer');
 
-      expect((result.buffers[0] as Buffer).buffer.constructor.name).toBe('SharedArrayBuffer');
-      expect((result.buffers[1] as Buffer).buffer.constructor.name).toBe('SharedArrayBuffer');
+      expect((result.buffers[0] as Buffer).buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
+      expect((result.buffers[1] as Buffer).buffer.constructor.name).toBe(
+        'SharedArrayBuffer',
+      );
 
       expect(result.metadata).toBe(container.metadata); // Plain object, same ref
     });

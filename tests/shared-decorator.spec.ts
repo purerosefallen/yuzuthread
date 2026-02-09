@@ -7,9 +7,7 @@ import {
 } from '../src/utility/shared-decorator';
 import { TransportType } from '../src/utility/transport-metadata';
 
-const Base = new Struct('SharedDecoratorBase')
-  .UInt32LE('value')
-  .compile();
+const Base = new Struct('SharedDecoratorBase').UInt32LE('value').compile();
 
 class SharedStruct extends Base {
   declare value: number;

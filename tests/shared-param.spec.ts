@@ -52,7 +52,7 @@ describe('@Shared parameter decorator', () => {
       const worker = await initWorker(SingleSharedWorker, originalData);
 
       // Worker has access to the shared data through 'this.data'
-      // Main thread should be able to access it through 'worker.data' 
+      // Main thread should be able to access it through 'worker.data'
       // However, worker.data is private in our test fixture
       // Let's verify the concept by checking SharedArrayBuffer backing
 
@@ -197,7 +197,7 @@ describe('@Shared parameter decorator', () => {
       // Expected usage: constructor(@Shared() public sharedData: SharedData)
       // Main thread can access worker.sharedData
       // Both sides share the same SharedArrayBuffer
-      
+
       const data = new PublicSharedData();
       data.counter = 100;
       data.flag = 5;

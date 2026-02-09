@@ -114,13 +114,13 @@ describe('Constructor parameter transport without decorators', () => {
 
     // Worker returns UserData object
     const returnedUserData = await worker.getUserData();
-    
+
     // Should have correct prototype and methods
     expect(returnedUserData).toHaveProperty('name', 'Charlie');
     expect(returnedUserData).toHaveProperty('age', 35);
     expect(returnedUserData).toHaveProperty('greet');
     expect(typeof returnedUserData.greet).toBe('function');
-    
+
     // Methods should work
     expect(returnedUserData.greet()).toBe("Hello, I'm Charlie, 35 years old");
 
@@ -137,7 +137,7 @@ describe('Constructor parameter transport without decorators', () => {
     // Both should work correctly
     const greeting = await worker.getUserGreeting();
     expect(greeting).toContain('David');
-    
+
     const isExpired = await worker.checkExpired();
     expect(typeof isExpired).toBe('boolean');
 
