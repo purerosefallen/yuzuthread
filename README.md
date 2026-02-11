@@ -339,6 +339,7 @@ console.log(nested.container.data.counter); // -> 200
 - Only converts fields with `@TransportType()` decorator
 - Or fields with `design:type` metadata (when `emitDecoratorMetadata` is enabled)
 - Skips fields with manual encoders (`@TransportEncoder()`)
+- Skips fields with `@TransportNoop()` (prevents transport and shared memory conversion)
 - Skips built-in types
 
 **Important notes:**
@@ -493,6 +494,97 @@ Encoders support async operations:
 )
 ```
 
+### Preventing Transport with `@TransportNoop`
+
+Use `@TransportNoop()` to mark fields, parameters, or return values that should always be transmitted as `undefined`. This is useful for:
+
+- Sensitive data that should not cross worker boundaries
+- Large objects that should not be copied
+- Functions or non-serializable objects
+- Fields that are only relevant in one thread
+
+```ts
+import { DefineWorker, WorkerMethod, TransportType, TransportNoop, initWorker } from 'yuzuthread';
+
+class UserData {
+  username!: string;
+  email!: string;
+
+  // This field will always be undefined after transport
+  @TransportNoop()
+  password?: string;
+
+  // This field will also be undefined after transport
+  @TransportNoop()
+  sessionToken?: string;
+}
+
+@DefineWorker()
+class SecureWorker {
+  @WorkerMethod()
+  @TransportType(() => UserData)
+  async processUser(
+    @TransportType(() => UserData) userData: UserData,
+    // This parameter will be undefined in the worker
+    @TransportNoop() sensitiveInfo?: string,
+  ): Promise<UserData> {
+    // userData.password is undefined here
+    // sensitiveInfo is undefined here
+    return new UserData();
+  }
+
+  @WorkerMethod()
+  @TransportNoop()
+  async getSecret(): Promise<string> {
+    // Return value will be undefined in the main thread
+    return 'this-will-be-undefined';
+  }
+}
+
+const worker = await initWorker(SecureWorker);
+
+const user = new UserData();
+user.username = 'alice';
+user.password = 'secret123';
+
+const result = await worker.processUser(user, 'sensitive');
+// result.password is undefined (not transmitted)
+
+const secret = await worker.getSecret();
+console.log(secret); // -> undefined
+
+await worker.finalize();
+```
+
+**Behavior with `toShared()`:**
+
+Fields decorated with `@TransportNoop()` are not recursively processed by `toShared()`:
+
+```ts
+class DataWithBuffer {
+  normalBuffer!: Buffer;
+
+  // This buffer will NOT be converted to SharedArrayBuffer
+  @TransportNoop()
+  sensitiveBuffer?: Buffer;
+}
+
+const data = new DataWithBuffer();
+data.normalBuffer = Buffer.from('normal');
+data.sensitiveBuffer = Buffer.from('sensitive');
+
+toShared(data);
+
+// normalBuffer is converted to SharedArrayBuffer
+console.log(data.normalBuffer.buffer.constructor.name); // -> 'SharedArrayBuffer'
+
+// sensitiveBuffer stays as regular Buffer
+console.log(data.sensitiveBuffer.buffer.constructor.name); // -> 'ArrayBuffer'
+```
+
+**Implementation note:**  
+`@TransportNoop` is implemented using `@TransportEncoder` with both encode and decode functions returning `undefined`.
+
 ### Built-in Type Handling
 
 - **Primitives** (`string`, `number`, `boolean`, etc.) - passed as-is
@@ -613,6 +705,8 @@ All combinations work seamlessly - the transport system automatically handles:
 - Multiple `@TransportType()` can be stacked (e.g., for method + parameters)
 - Encoding/decoding happens automatically during method calls
 - Transport uses structured clone algorithm with custom class restoration
+- `@TransportNoop()` provides a way to prevent specific fields/parameters from being transported
+- Fields with `@TransportNoop()` are also skipped by `toShared()` (won't be recursively converted)
 
 ## Worker Status
 
@@ -729,6 +823,12 @@ Event handlers run on the main thread and can access the main-thread instance st
   - `encode: (obj: T) => Awaitable<U>` - serialize function
   - `decode: (encoded: U) => Awaitable<T>` - deserialize function
   - supports async operations
+  - works as `PropertyDecorator`, `MethodDecorator`, and `ParameterDecorator`
+- `TransportNoop()`
+  - prevents field, parameter, or return value from being transported (always `undefined`)
+  - useful for sensitive data, large objects, or non-serializable values
+  - implemented using `TransportEncoder` with encode/decode returning `undefined`
+  - fields with `@TransportNoop` are not processed by `toShared()`
   - works as `PropertyDecorator`, `MethodDecorator`, and `ParameterDecorator`
 
 #### Shared Memory

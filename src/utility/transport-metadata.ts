@@ -398,3 +398,21 @@ export const getPropertyTransporter = (
   if (data.kind === 'property') return data.info;
   return null;
 };
+
+/**
+ * Noop transporter that always encodes/decodes values to undefined.
+ * Use this to prevent a field/parameter/return value from being transported.
+ *
+ * @example
+ * class MyClass {
+ *   @TransportNoop()
+ *   sensitiveData?: string; // This field will always be undefined after transport
+ * }
+ */
+export const TransportNoop = (): PropertyDecorator &
+  MethodDecorator &
+  ParameterDecorator =>
+  TransportEncoder(
+    () => undefined,
+    () => undefined,
+  );

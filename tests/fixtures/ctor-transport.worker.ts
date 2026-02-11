@@ -1,4 +1,4 @@
-import { DefineWorker, WorkerMethod, TransportType } from '../..';
+import { DefineWorker, WorkerMethod, TransportType, TransportNoop } from '../..';
 
 export class UserData {
   name: string;
@@ -88,5 +88,44 @@ export class NoDecoratorCtorWorker {
   @WorkerMethod()
   getConfigCreatedAt(): Date {
     return this.config.createdAt;
+  }
+}
+
+// Worker with @TransportNoop on constructor parameter
+@DefineWorker()
+export class CtorTransportNoopWorker {
+  constructor(
+    @TransportType(() => UserData) private userData: UserData,
+    @TransportNoop() private sensitiveConfig?: Config,
+    private normalParam?: string,
+  ) {}
+
+  @WorkerMethod()
+  getUserGreeting(): string {
+    return this.userData.greet();
+  }
+
+  @WorkerMethod()
+  getSensitiveConfig(): Config | undefined {
+    // Should be undefined because of @TransportNoop
+    return this.sensitiveConfig;
+  }
+
+  @WorkerMethod()
+  getNormalParam(): string | undefined {
+    return this.normalParam;
+  }
+
+  @WorkerMethod()
+  checkAllParams(): {
+    hasUserData: boolean;
+    hasSensitiveConfig: boolean;
+    hasNormalParam: boolean;
+  } {
+    return {
+      hasUserData: this.userData !== undefined,
+      hasSensitiveConfig: this.sensitiveConfig !== undefined,
+      hasNormalParam: this.normalParam !== undefined,
+    };
   }
 }

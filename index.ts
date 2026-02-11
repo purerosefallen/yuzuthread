@@ -7,6 +7,7 @@ export { WorkerEventName } from './src/utility/metadata';
 export {
   TransportType,
   TransportEncoder,
+  TransportNoop,
 } from './src/utility/transport-metadata';
 export type {
   Awaitable,

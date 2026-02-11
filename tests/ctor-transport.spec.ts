@@ -2,6 +2,7 @@ import { initWorker } from '..';
 import {
   CtorTransportWorker,
   NoDecoratorCtorWorker,
+  CtorTransportNoopWorker,
   UserData,
   Config,
 } from './fixtures/ctor-transport.worker';
@@ -140,6 +141,77 @@ describe('Constructor parameter transport without decorators', () => {
 
     const isExpired = await worker.checkExpired();
     expect(typeof isExpired).toBe('boolean');
+
+    await worker.finalize();
+  });
+});
+
+describe('Constructor parameter with @TransportNoop', () => {
+  it('should transport parameter with @TransportNoop as undefined', async () => {
+    const userData = new UserData('Alice', 25);
+    const sensitiveConfig = new Config();
+    sensitiveConfig.timeout = 9999;
+    const normalParam = 'normal-value';
+
+    const worker = await initWorker(
+      CtorTransportNoopWorker,
+      userData,
+      sensitiveConfig,
+      normalParam,
+    );
+
+    // userData should be transported normally
+    const greeting = await worker.getUserGreeting();
+    expect(greeting).toBe("Hello, I'm Alice, 25 years old");
+
+    // sensitiveConfig should be undefined (TransportNoop)
+    const config = await worker.getSensitiveConfig();
+    expect(config).toBeUndefined();
+
+    // normalParam should be transported normally
+    const param = await worker.getNormalParam();
+    expect(param).toBe('normal-value');
+
+    await worker.finalize();
+  });
+
+  it('should verify all parameters transport status', async () => {
+    const userData = new UserData('Bob', 30);
+    const sensitiveConfig = new Config();
+    const normalParam = 'test';
+
+    const worker = await initWorker(
+      CtorTransportNoopWorker,
+      userData,
+      sensitiveConfig,
+      normalParam,
+    );
+
+    const status = await worker.checkAllParams();
+
+    expect(status.hasUserData).toBe(true); // Normal transport
+    expect(status.hasSensitiveConfig).toBe(false); // @TransportNoop -> undefined
+    expect(status.hasNormalParam).toBe(true); // Normal transport
+
+    await worker.finalize();
+  });
+
+  it('should work with undefined values passed to noop parameter', async () => {
+    const userData = new UserData('Charlie', 35);
+
+    // Pass undefined explicitly for noop parameter
+    const worker = await initWorker(
+      CtorTransportNoopWorker,
+      userData,
+      undefined,
+      'value',
+    );
+
+    const config = await worker.getSensitiveConfig();
+    expect(config).toBeUndefined();
+
+    const greeting = await worker.getUserGreeting();
+    expect(greeting).toBe("Hello, I'm Charlie, 35 years old");
 
     await worker.finalize();
   });
