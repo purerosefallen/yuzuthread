@@ -123,6 +123,105 @@ console.log(value); // -> 5
 
 Use this when worker-side logic needs to call back into main-thread state or services.
 
+## `@WorkerInit()` – Worker Initialization
+
+`@WorkerInit()` marks methods to run during worker initialization:
+
+- Methods are called **in the worker thread** after the class is instantiated.
+- All `@WorkerInit()` methods must complete successfully before `initWorker()` resolves.
+- If any `@WorkerInit()` method throws an error, `initWorker()` will reject.
+
+**Example:**
+
+```ts
+@DefineWorker()
+export class DatabaseWorker {
+  connection: any;
+
+  @WorkerInit()
+  async initialize() {
+    // Run expensive initialization in worker thread
+    this.connection = await setupDatabaseConnection();
+  }
+
+  @WorkerMethod()
+  async query(sql: string) {
+    return this.connection.query(sql);
+  }
+}
+```
+
+**Usage:**
+
+```ts
+// Worker is not ready until all @WorkerInit methods complete
+const db = await initWorker(DatabaseWorker);
+// Now connection is established and ready to use
+const result = await db.query('SELECT * FROM users');
+```
+
+## `@WorkerFinalize()` – Automatic Worker Exit
+
+`@WorkerFinalize()` marks methods that trigger worker exit when called:
+
+- The method can be called from anywhere in the worker thread (not just from `@WorkerMethod()`).
+- After the method completes (whether success or error), the worker will automatically exit.
+- `@OnWorkerExit()` handlers will still be triggered normally.
+
+**Example:**
+
+```ts
+@DefineWorker()
+export class TaskWorker {
+  @WorkerFinalize()
+  cleanup() {
+    // Perform cleanup operations
+    console.log('Cleaning up resources...');
+  }
+
+  @WorkerMethod()
+  async processTask(task: any) {
+    const result = await doWork(task);
+    
+    // Trigger cleanup and exit after this method completes
+    this.cleanup();
+    
+    return result;
+  }
+}
+```
+
+**Combined with `@WorkerMethod()`:**
+
+A method can have both decorators:
+
+```ts
+@DefineWorker()
+export class OneTimeWorker {
+  @WorkerMethod()
+  @WorkerFinalize()
+  async processAndExit(data: any) {
+    // This method can be called from main thread
+    const result = await heavyComputation(data);
+    // After returning, worker automatically exits
+    return result;
+  }
+}
+```
+
+**Usage:**
+
+```ts
+const worker = await initWorker(OneTimeWorker);
+
+// Call the method - it will return normally
+const result = await worker.processAndExit(myData);
+
+// Worker has now exited automatically
+// Any subsequent calls will fail
+await worker.processAndExit(moreData); // throws: Worker has been finalized
+```
+
 ## Shared Memory with `typed-struct`
 
 ### Worker Class Shared Memory
@@ -797,6 +896,15 @@ Event handlers run on the main thread and can access the main-thread instance st
   - marks a method to execute on worker thread
 - `WorkerCallback()`
   - marks a method to execute on main thread when called from worker
+- `WorkerInit()`
+  - marks a method to run during worker initialization (in worker thread)
+  - all `@WorkerInit()` methods must complete before `initWorker()` resolves
+  - if any `@WorkerInit()` method throws, `initWorker()` will reject
+- `WorkerFinalize()`
+  - marks a method that triggers worker exit when called (anywhere in worker thread)
+  - worker exits after the method completes (whether success or error)
+  - can be combined with `@WorkerMethod()` on the same method
+  - `@OnWorkerExit()` handlers will still be triggered
 
 #### Event Handlers
 

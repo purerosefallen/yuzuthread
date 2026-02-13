@@ -41,6 +41,12 @@ export const OnWorkerExit = (): MethodDecorator => OnWorkerEvent('exit');
 
 export const OnWorkerError = (): MethodDecorator => OnWorkerEvent('error');
 
+export const WorkerInit = (): MethodDecorator =>
+  Metadata.set('workerInit', true, 'workerInitKeys');
+
+export const WorkerFinalize = (): MethodDecorator =>
+  Metadata.set('workerFinalize', true, 'workerFinalizeKeys');
+
 export const getWorkerMethods = (target: any): string[] =>
   reflector
     .getArray('workerMethodKeys', target)
@@ -50,6 +56,16 @@ export const getWorkerCallbacks = (target: any): string[] =>
   reflector
     .getArray('workerCallbackKeys', target)
     .filter((key) => reflector.get('workerCallback', target, key));
+
+export const getWorkerInits = (target: any): string[] =>
+  reflector
+    .getArray('workerInitKeys', target)
+    .filter((key) => reflector.get('workerInit', target, key));
+
+export const getWorkerFinalizes = (target: any): string[] =>
+  reflector
+    .getArray('workerFinalizeKeys', target)
+    .filter((key) => reflector.get('workerFinalize', target, key));
 
 export const getWorkerEventHandlers = (target: any): Map<string, string[]> => {
   const map = new Map<string, string[]>();

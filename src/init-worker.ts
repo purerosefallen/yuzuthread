@@ -289,6 +289,13 @@ export const initWorker = async <C extends AnyClass>(
         return;
       }
       case 'finalized':
+        // Worker is about to exit due to @WorkerFinalize
+        if (!finalized) {
+          finalized = true;
+          status = WorkerStatus.Finalized;
+          rejectAll(new Error('Worker has been finalized'));
+        }
+        return;
       default:
         return;
     }

@@ -1,8 +1,5 @@
 import { AnyClass } from 'nfkit';
-import {
-  TransporterInfo,
-  getPropertyTransporter,
-} from './transport-metadata';
+import { TransporterInfo, getPropertyTransporter } from './transport-metadata';
 import { isBuiltinType } from './type-helpers';
 
 const resolveTransporterClass = (
@@ -16,10 +13,7 @@ const resolveTransporterClass = (
   return Array.isArray(factoryResult) ? factoryResult[0] : factoryResult;
 };
 
-export const shouldProcessSharedField = (
-  proto: any,
-  key: string,
-): boolean => {
+export const shouldProcessSharedField = (proto: any, key: string): boolean => {
   if (!proto) {
     return false;
   }

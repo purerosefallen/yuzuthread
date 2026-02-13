@@ -6,6 +6,8 @@ export type WorkerEventName = Extract<Parameters<Worker['on']>[0], string>;
 export interface MetadataMap {
   workerMethod: boolean;
   workerCallback: boolean;
+  workerInit: boolean;
+  workerFinalize: boolean;
 }
 
 export interface MetadataArrayMap {
@@ -13,6 +15,8 @@ export interface MetadataArrayMap {
   workerCallbackKeys: string;
   workerEventKeys: string;
   workerEvent: WorkerEventName;
+  workerInitKeys: string;
+  workerFinalizeKeys: string;
 }
 
 export const Metadata = new MetadataSetter<MetadataMap, MetadataArrayMap>();

@@ -1,7 +1,12 @@
 import { AnyClass } from 'nfkit';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
-import { getWorkerCallbacks, getWorkerMethods } from './worker-method';
+import {
+  getWorkerCallbacks,
+  getWorkerMethods,
+  getWorkerInits,
+  getWorkerFinalizes,
+} from './worker-method';
 import { findTypedStructClass } from './utility/find-typed-struct-cls';
 import { AnyStructConstructor } from './utility/types';
 import {
@@ -14,7 +19,6 @@ import {
   createTypedStructInstance,
   safeScanTypedStructClass,
 } from './utility/typed-struct-registry';
-import { getSharedParams } from './utility/shared-decorator';
 import { decodeCtorArgs } from './utility/transport';
 
 type SerializedError = {
@@ -244,6 +248,8 @@ const setupWorkerRuntime = async (
   }
   const workerMethods = new Set(getWorkerMethods(cls.prototype));
   const workerCallbacks = new Set(getWorkerCallbacks(cls.prototype));
+  const workerInits = getWorkerInits(cls.prototype);
+  const workerFinalizes = new Set(getWorkerFinalizes(cls.prototype));
   const pendingCallbacks = new Map<
     number,
     {
@@ -253,6 +259,67 @@ const setupWorkerRuntime = async (
     }
   >();
   let nextCallbackId = 1;
+  let shouldFinalize = false;
+
+  // Wrap all @WorkerFinalize methods to trigger exit on completion
+  const triggerFinalize = (): void => {
+    if (shouldFinalize) return;
+    shouldFinalize = true;
+    setImmediate(() => {
+      if (parentPort) {
+        parentPort.postMessage({
+          type: 'finalized',
+        } satisfies WorkerHostMessage);
+      }
+      process.exit(0);
+    });
+  };
+
+  // Wrap all @WorkerFinalize decorated methods
+  for (const methodName of workerFinalizes) {
+    const originalMethod = (instance as Record<string, unknown>)[methodName];
+    if (typeof originalMethod === 'function') {
+      Object.defineProperty(instance, methodName, {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value: function (this: typeof instance, ...args: unknown[]) {
+          let shouldExit = false;
+          try {
+            const result = (
+              originalMethod as (...args: unknown[]) => unknown
+            ).apply(this, args);
+            // Handle both sync and async methods
+            if (result && typeof result === 'object' && 'then' in result) {
+              return (result as Promise<unknown>)
+                .then((value) => {
+                  if (!shouldExit) {
+                    shouldExit = true;
+                    triggerFinalize();
+                  }
+                  return value;
+                })
+                .catch((error) => {
+                  if (!shouldExit) {
+                    shouldExit = true;
+                    triggerFinalize();
+                  }
+                  throw error;
+                });
+            } else {
+              shouldExit = true;
+              triggerFinalize();
+              return result;
+            }
+          } catch (error) {
+            shouldExit = true;
+            triggerFinalize();
+            throw error;
+          }
+        },
+      });
+    }
+  }
 
   const callMainCallback = async (
     method: string,
@@ -359,6 +426,23 @@ const setupWorkerRuntime = async (
       } satisfies WorkerHostMessage);
     }
   });
+
+  // Run all @WorkerInit methods before sending ready
+  try {
+    for (const initMethod of workerInits) {
+      await invokeWorkerMethod(
+        instance as Record<string, unknown>,
+        initMethod,
+        [],
+      );
+    }
+  } catch (error) {
+    parentPort.postMessage({
+      type: 'init-error',
+      error: serializeError(error),
+    } satisfies WorkerHostMessage);
+    return;
+  }
 
   parentPort.postMessage({ type: 'ready' } satisfies WorkerHostMessage);
 };

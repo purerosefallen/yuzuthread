@@ -1,4 +1,9 @@
-import { DefineWorker, WorkerMethod, TransportType, TransportNoop } from '../..';
+import {
+  DefineWorker,
+  WorkerMethod,
+  TransportType,
+  TransportNoop,
+} from '../..';
 
 export class UserData {
   name: string;
