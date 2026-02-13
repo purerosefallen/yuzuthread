@@ -1,7 +1,7 @@
 {
   "name": "yuzuthread",
   "description": "Decorator-driven class workers for Node.js worker_threads with typed-struct shared memory.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
