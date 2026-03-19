@@ -1,6 +1,7 @@
 import { AnyClass } from 'nfkit';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
+import { MetadataRegistry } from 'typed-reflector';
 import {
   getWorkerCallbacks,
   getWorkerMethods,
@@ -115,8 +116,20 @@ export type WorkerRegistration = {
   typedStruct: WorkerTypedStructRegistration | null;
 };
 
-const REGISTRY = new WeakMap<AnyClass, WorkerRegistration>();
+const WorkerMetadataRegistry = new MetadataRegistry();
+const WORKER_REGISTRATION_KEY = Symbol('yuzuthread.worker-registration');
 const STARTED = new Set<string>();
+
+const getOwnWorkerRegistration = (
+  cls: AnyClass,
+): WorkerRegistration | null => {
+  return (
+    (WorkerMetadataRegistry.getOwnMetadata(
+      WORKER_REGISTRATION_KEY,
+      cls,
+    ) as WorkerRegistration | undefined) ?? null
+  );
+};
 
 type WorkerOptions = {
   filePath?: string;
@@ -473,7 +486,7 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
 
   return (target) => {
     const cls = target as unknown as AnyClass;
-    const existing = REGISTRY.get(cls);
+    const existing = getOwnWorkerRegistration(cls);
     if (existing) {
       tryStartWorkerForClass(cls, existing);
       return;
@@ -520,7 +533,11 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
       filePath: resolvedFilePath,
       typedStruct,
     };
-    REGISTRY.set(cls, registration);
+    WorkerMetadataRegistry.defineMetadata(
+      WORKER_REGISTRATION_KEY,
+      registration,
+      cls,
+    );
     tryStartWorkerForClass(cls, registration);
   };
 };
@@ -528,5 +545,5 @@ export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
 export const getWorkerRegistration = <C extends AnyClass>(
   cls: C,
 ): WorkerRegistration | null => {
-  return REGISTRY.get(cls) ?? null;
+  return getOwnWorkerRegistration(cls);
 };

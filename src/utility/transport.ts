@@ -3,8 +3,8 @@ import {
   TransporterInfo,
   getReturnTransporter,
   getParamTransporters,
+  getCtorParamTransporters,
   getPropertyTransporter,
-  transportReflector,
 } from './transport-metadata';
 import { AnyStructConstructor } from './types';
 import { createTypedStructInstance } from './typed-struct-registry';
@@ -367,20 +367,6 @@ export const decodeValue = async (
   }
 
   return encoded;
-};
-
-/**
- * Get transporter info for constructor parameters
- * Constructor parameters are stored with propertyKey = undefined
- */
-const getCtorParamTransporters = (
-  cls: AnyClass,
-): Map<number, TransporterInfo> => {
-  // Constructor parameter metadata is stored without propertyKey
-  const data = transportReflector.get('transporter', cls, undefined as any);
-  if (!data) return new Map();
-  if (data.kind === 'params') return data.params;
-  return new Map();
 };
 
 /**

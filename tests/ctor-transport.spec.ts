@@ -1,4 +1,5 @@
 import { initWorker } from '..';
+import { getCtorParamTransporters } from '../src/utility/transport-metadata';
 import {
   CtorTransportWorker,
   NoDecoratorCtorWorker,
@@ -147,6 +148,14 @@ describe('Constructor parameter transport without decorators', () => {
 });
 
 describe('Constructor parameter with @TransportNoop', () => {
+  it('should register constructor parameter transporters through typed-reflector', () => {
+    const transporters = getCtorParamTransporters(CtorTransportNoopWorker);
+
+    expect(transporters.get(0)).toMatchObject({ type: 'class' });
+    expect(transporters.get(1)).toMatchObject({ type: 'encoder' });
+    expect(transporters.get(2)).toBeUndefined();
+  });
+
   it('should transport parameter with @TransportNoop as undefined', async () => {
     const userData = new UserData('Alice', 25);
     const sensitiveConfig = new Config();
