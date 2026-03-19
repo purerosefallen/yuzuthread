@@ -8,6 +8,7 @@ import {
   getWorkerFinalizes,
 } from './worker-method';
 import { findTypedStructClass } from './utility/find-typed-struct-cls';
+import { resolveWorkerFilePath } from './utility/resolve-worker-file-path';
 import { AnyStructConstructor } from './utility/types';
 import {
   encodeMethodArgs,
@@ -119,6 +120,7 @@ const STARTED = new Set<string>();
 
 type WorkerOptions = {
   filePath?: string;
+  moduleUrl?: string;
   id?: string;
 };
 
@@ -467,7 +469,7 @@ const tryStartWorkerForClass = (
 };
 
 export const DefineWorker = (options: WorkerOptions = {}): ClassDecorator => {
-  const resolvedFilePath = options.filePath ?? getCurrentFile();
+  const resolvedFilePath = resolveWorkerFilePath(options, getCurrentFile());
 
   return (target) => {
     const cls = target as unknown as AnyClass;

@@ -36,6 +36,26 @@ Enable decorators in your `tsconfig.json`:
 - `experimentalDecorators` is required for all decorators
 - `emitDecoratorMetadata` enables automatic type inference for `@TransportType()`
 
+## ESM Support
+
+`yuzuthread` ships both CommonJS and ESM builds.
+
+If your worker class lives in an ESM module, pass `import.meta.url` to `@DefineWorker()` so the worker entry file is resolved explicitly instead of relying on stack inspection:
+
+```ts
+import { DefineWorker, WorkerMethod } from 'yuzuthread';
+
+@DefineWorker({ moduleUrl: import.meta.url })
+export class CounterWorker {
+  @WorkerMethod()
+  add(a: number, b: number) {
+    return a + b;
+  }
+}
+```
+
+This ESM path also supports worker modules that use top-level `await`.
+
 ## Define a Worker Class
 
 Put each worker class in its own file and add `@DefineWorker()`.

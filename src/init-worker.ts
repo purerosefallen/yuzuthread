@@ -23,6 +23,7 @@ import {
 } from './utility/transport';
 import { createTypedStructInstance } from './utility/typed-struct-registry';
 import { getSharedParams } from './utility/shared-decorator';
+import { WORKER_BOOTSTRAP } from './utility/worker-bootstrap';
 import { toShared } from './to-shared';
 import { encodeCtorArgs } from './utility/transport';
 
@@ -53,11 +54,6 @@ const serializeError = (error: unknown): ErrorLike => {
   }
   return { message: String(error) };
 };
-
-const WORKER_BOOTSTRAP = `
-const { workerData } = require('node:worker_threads');
-require(workerData.__entryFile);
-`;
 
 export type WorkerInstance<T> = T & {
   finalize: () => Promise<void>;

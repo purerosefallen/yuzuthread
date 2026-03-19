@@ -25,6 +25,45 @@ function rimraf(p) {
     } catch {}
   }
 }
+const findFirstExistingFile = (paths) => (
+  paths.find((file) => fs.existsSync(file)) || null
+);
+const createEsmOverrideCandidates = (resolvedBase) => {
+  const ext = path.extname(resolvedBase);
+  if (ext) {
+    const withoutExt = resolvedBase.slice(0, -ext.length);
+    return [`${withoutExt}.esm${ext}`];
+  }
+
+  return [
+    `${resolvedBase}.esm.ts`,
+    `${resolvedBase}.esm.tsx`,
+    `${resolvedBase}.esm.js`,
+    `${resolvedBase}.esm.mjs`,
+    path.join(resolvedBase, 'index.esm.ts'),
+    path.join(resolvedBase, 'index.esm.tsx'),
+    path.join(resolvedBase, 'index.esm.js'),
+    path.join(resolvedBase, 'index.esm.mjs'),
+  ];
+};
+const createEsmOverridePlugin = () => ({
+  name: 'esm-override',
+  setup(build) {
+    build.onResolve({ filter: /^\.\.?\// }, (args) => {
+      if (!args.importer) return null;
+
+      const resolvedBase = path.resolve(path.dirname(args.importer), args.path);
+      const overridePath = findFirstExistingFile(
+        createEsmOverrideCandidates(resolvedBase),
+      );
+      if (!overridePath) return null;
+
+      return {
+        path: overridePath,
+      };
+    });
+  },
+});
 
 function depsAsExternal(pkg) {
   const dep = Object.keys(pkg.dependencies || {});
@@ -64,6 +103,7 @@ async function buildOne(format, options) {
     target: isCjs ? 'es2021' : 'esnext',
     external, // deps + peerDeps + node builtins (含 node:*)
     logLevel: 'info',
+    plugins: isCjs ? [] : [createEsmOverridePlugin()],
     ...(tsconfig ? { tsconfig } : {}),
   });
 }
